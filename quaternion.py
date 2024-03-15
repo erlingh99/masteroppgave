@@ -64,3 +64,6 @@ class RotationQuaternion(Quaternion):
     @property
     def R(self) -> np.ndarray[3, 3]:
         return self.as_rotation_matrix()
+    
+    def copy(self):
+        return RotationQuaternion(self.eta, self.epsilon.copy())

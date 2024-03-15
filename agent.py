@@ -1,23 +1,22 @@
-from error_state_kalman_filter import ESKF
-from dataclasses import dataclass
+from filter import Filter
 
 
 class Agent:
     """An agent equipped with GNSS and IMU tracking targets and other agents"""
 
     def __post_init__(self) -> None:
-        self.eskf = ESKF()
+        self.filter = Filter()
         
 
     def predict(self, dt: float) -> None:
         """
         Run every time the 
         """
-        self.eskf.predict(dt)
+        pass
         
 
     def update(self, measurement) -> None:
-        self.eskf.update(measurement)
+        pass
         
 
     def __preintegrate_imu__(self):
