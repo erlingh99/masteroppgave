@@ -1,6 +1,7 @@
 import numpy as np
-from lie_theory import SE3_2, SO3, ExponentialGaussian
-from measurements import IMU_Measurement, GNSS_Sensor, GNSS_Measurement
+from lie_theory import SE3_2, SO3
+from gaussian import ExponentialGaussian
+from measurements import IMU_Measurement, GNSS_Sensor
 from utils import op1, op2
    
 
