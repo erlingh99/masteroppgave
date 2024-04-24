@@ -227,11 +227,26 @@ class SO3(LieGroup):
         if theta < 1e-10:
             return np.identity(3)
 
-        theta_hat = cross_matrix(theta_vec)
+        u = cross_matrix(theta_vec/theta)
 
-        return np.identity(3) + ((1 - np.cos(theta)) / (theta ** 2)) * theta_hat + (
-                (theta - np.sin(theta)) / (theta ** 3)) * theta_hat @ theta_hat
+        return np.identity(3) + ((1 - np.cos(theta)) / (theta )) * u + (
+                (theta - np.sin(theta)) / (theta )) * u @ u
     
+    @staticmethod
+    def int_jac_left(theta_vec):
+        """Compute the integral of the left derivative of Exp(theta_vec) with respect to the length of theta_vec.
+
+        :param theta_vec: The tangent space 3D column vector.
+        :return: The Jacobian (3x3 matrix)
+        """
+        theta = np.linalg.norm(theta_vec)
+        if theta < 1e-10:
+            return np.identity(3)
+
+        u = cross_matrix(theta_vec/theta)
+
+        return np.identity(3) + 2*((theta - np.sin(theta)) / (theta ** 2)) * u + (
+                (theta**2 + 2*np.cos(theta)-2) / (theta ** 2)) * u @ u
     
     @staticmethod
     def jac_right(theta_vec):
@@ -465,7 +480,6 @@ class SE3_2(LieGroup):
         m[:3, 4] = self.p
         return m
 
-
     @classmethod
     def Exp(cls, tau: np.ndarray[9]) -> "SE3_2":
         """
@@ -530,13 +544,31 @@ class SE3_2(LieGroup):
         nu = eps[3:6]
         rho = eps[6:9]
 
-        J[3:6, :3] = self.__Q_phi__(-phi, -nu)
-        J[6:, :3] = self.__Q_phi__(-phi, -rho)
+        J[3:6, :3] = SE3_2.__Q_phi__(-phi, -nu)
+        J[6:, :3] = SE3_2.__Q_phi__(-phi, -rho)
+        
+        return J
+    
+
+    @staticmethod
+    def jac_right(tau):
+        phi = tau[:3]
+        nu = tau[3:6]
+        rho = tau[6:9]
+
+        J = np.zeros((9, 9))
+        J_R = SO3.jac_right(phi)
+        J[:3, :3] = J_R
+        J[3:6, 3:6] = J_R
+        J[6:9, 6:9] = J_R
+
+        J[3:6, :3] = SE3_2.__Q_phi__(-phi, -nu)
+        J[6:, :3] = SE3_2.__Q_phi__(-phi, -rho)
         
         return J
 
-    
-    def __Q_phi__(self, phi, nu_or_rho):
+    @staticmethod
+    def __Q_phi__(phi, nu_or_rho):
         """
         eq 95 in SE3_2 paper
         """

@@ -55,7 +55,7 @@ def exp_cov(poses, mean):
     return fact * m@m.T
 
 
-def find_mean(poses, init_guess, n_iter=100, eps=1e-8):
+def find_mean(poses, init_guess, n_iter=100, eps=1e-5):
     """
     Find the mean of a set of poses using iterating average on tangent plane
     """

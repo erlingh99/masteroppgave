@@ -1,229 +1,198 @@
 import numpy as np
 from dataclasses import dataclass
+from states import TargetState
+from lie_theory import SE3_2, SO3
+from utils import cross_matrix, op1, op2
 from measurements import IMU_Measurement
-from lie_theory import SE3_2
-from scipy.linalg import block_diag
 
-class CV:
-    pass
+@dataclass
+class CV_world:
+    var_acc: float #velocity variance, assumed same for x y z
+
+    def propegate(self, state: TargetState, dt: float):
+        F = self.F(dt)
+        new_mean = F@state.mean
+        new_cov = F@state.cov@F.T + self.Q(dt)
+
+        return TargetState(new_mean, new_cov)
+        
+
+    def F(self, dt: float):
+        return np.block([[       np.eye(3), dt*np.eye(3)],
+                         [np.zeros((3, 3)),    np.eye(3)]])
+    
+
+    def Q(self, dt: float):
+        return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
+                         [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
+
+
+# @dataclass
+# class CV_SE23: #assumes the change in rotation and velocity to be wiener processes
+#     state: SE3_2
+
+#     def propegate(self, dt):
+#         pass
+
+
 
 
 @dataclass
-class IMU:
-    """The IMU is considered a dynamic model instead of a sensar. 
-    This works as an IMU measures the change between two states, 
-    and not the state itself.."""
+class IMU_Model:
+    """
+    bias and frame correction can be implemented here
+    here no bias and IMU and body frame coincide
+    """
+    noise: np.ndarray[6, 6] #noise of IMU measurements
+    
+    g = np.array([0, 0, -9.81])
+    
+    def propegate_mean(self, mean: np.ndarray[5, 5], z: IMU_Measurement, dt: float, mode=1):
+        return self.gravityMatrix(dt)@self.positionChange(mean, dt)@self.incrementMatrix(z, dt, mode=mode)
 
-    accm_std: float
-    accm_bias_std: float
-    accm_bias_p: float
 
-    gyro_std: float
-    gyro_bias_std: float
-    gyro_bias_p: float
+    def propegate_cov(self, cov: np.ndarray[9, 9], z: IMU_Measurement, dt: float, mode=1):
+        inc = self.incrementMatrix(z, dt, mode=mode)
+        Ai = self.__A__(inc, dt)
+        Qi = self.__Q__(z, dt, mode=mode)
 
-    accm_correction: np.ndarray[3, 3]
-    gyro_correction: np.ndarray[3, 3]
+        cov_tmp = Ai@cov@Ai.T
+        cov_2nd = cov_tmp + Qi
+        cov_4th = cov_2nd + self.__fourth_order__(cov_tmp, Qi)
+        return cov_4th
 
-    g = np.array([0, 0, 9.81])
 
-    Q_c = np.empty((12, 12))
+    def gravityMatrix(self, dt):
+        """Compute gravity compensation"""
+        Gamma = np.eye(5)
+        Gamma[:3, 3] = self.g*dt
+        Gamma[:3, 4] = 1/2*self.g*(dt**2)
+        return Gamma
 
-    def __post_init__(self):
-        def diag3(x): return np.diag([x]*3)
+    def positionChange(self, T, dt):
+        """Compute Phi"""
+        Phi = T.copy()
+        Phi[:3, 4] += Phi[:3, 3]*dt
+        return Phi
+    
+    def incrementMatrix(self, measurement: IMU_Measurement, dt, mode=1):
+        """Compute Upsilon (IMU)"""
 
-        accm_corr = self.accm_correction
-        gyro_corr = self.gyro_correction
-
-        self.Q_c = block_diag(
-            accm_corr @ diag3(self.accm_std**2) @ accm_corr.T,
-            gyro_corr @ diag3(self.gyro_std**2) @ gyro_corr.T,
-            diag3(self.accm_bias_std**2),
-            diag3(self.gyro_bias_std**2)
-        )
-
-    def correct_z_imu(self,
-                      biases: ESKF_State,
-                      z_imu: IMU_Measurement,
-                      ) -> (np.ndarray, np.ndarray):
-        """
-        Correct IMU measurement so it gives a measurmenet of acceleration 
-        and angular velocity in body.
-
-        self.accm_correction and self.gyro_correction translates 
-        measurements from IMU frame to body frame
-
-        Args:
-            biases: previous nominal state biases
-            z_imu: raw IMU measurement
-
-        Returns:
-            z_corr: corrected IMU measurement
-        """
-        acc_corr = self.accm_correction@(z_imu.acc - biases.accm_bias)
-        gyro_corr = self.gyro_correction@(z_imu.gyro - biases.gyro_bias)
+        deltaR = SO3.Exp(dt*measurement.gyro).as_matrix()
+        upsilon = np.eye(5)
+        upsilon[:3, :3] = deltaR
+        upsilon[:3, 3] = measurement.acc*dt
+        upsilon[:3, 4] = 1/2*(dt**2)*measurement.acc
         
-        return acc_corr, gyro_corr
+        if mode == 1:
+            Jl = SO3.jac_left(dt*measurement.gyro)
+            Hl = Jl@self.__C__(measurement.gyro*dt)
+            upsilon[:3, 3] = Jl@upsilon[:3, 3]
+            upsilon[:3, 4] = Hl@upsilon[:3, 4]
+        elif mode == 2:
+            Jl = SO3.jac_left(dt*measurement.gyro)
+            upsilon[:3, 3] = Jl@upsilon[:3, 3]
+            upsilon[:3, 4] = Jl@upsilon[:3, 4] #np.zeros(3)
 
-    def predict_state(self,
-                        prev_state: SE3_2,
-                        zs: np.ndarray[IMU_Measurement],
-                        dt: float) -> SE3_2:
-        """Predict the nominal state, given a corrected IMU measurement and a 
-        time step, by discretizing (10.58) in the book.
+        return upsilon
 
-        We assume the change in orientation is negligable when caculating 
-        predicted position and velicity, see assignment pdf.
 
-        Hint: You can use: delta_rot = RotationQuaterion.from_avec(something)
-
-        Args:
-            x_est_nom: previous nominal state
-            z_corr: corrected IMU measuremnt
-            dt: time step
-        Returns:
-            x_nom_pred: predicted nominal state
-        """
-        a = x_est_nom.ori.R@z_corr.acc + self.g
-
-        pos_pred = x_est_nom.pos + dt*x_est_nom.vel + dt**2/2*a
-        vel_pred = x_est_nom.vel + dt*a
-
-        delta_rot = RotationQuaterion.from_avec(dt*z_corr.avel)
-        ori_pred = x_est_nom.ori@delta_rot    
-
-        acc_bias_pred = (1 - dt*self.accm_bias_p)*x_est_nom.accm_bias
-        gyro_bias_pred = (1 - dt*self.gyro_bias_p)*x_est_nom.gyro_bias
-
-        x_nom_pred = NominalState(pos_pred, vel_pred, ori_pred, acc_bias_pred, gyro_bias_pred)
-
-        #x_nom_pred = models_solu.ModelIMU.predict_nom(self, x_est_nom, z_corr, dt)
-        return x_nom_pred
-
-    def A_c(self,
-            x_est_nom: NominalState,
-            z_corr: CorrectedImuMeasurement,
-            ) -> 'np.ndarray[15, 15]':
-        """Get the transition matrix, A, in (10.68)
-
-        Hint: The S matrices can be created using get_cross_matrix. In the book
-        a perfect IMU is expected (thus many I matrices). Here we have 
-        to use the correction matrices, self.accm_correction and 
-        self.gyro_correction, instead of som of the I matrices.  
-
-        You can use block_3x3 to simplify indexing if you want to.
-        ex: first I element in A can be set as A[block_3x3(0, 1)] = np.eye(3)
-
-        Args:
-            x_nom_prev: previous nominal state
-            z_corr: corrected IMU measurement
-        Returns:
-            A (ndarray[15,15]): A
-        """
-        A_c = np.zeros((15, 15))
-        Rq = x_est_nom.ori.as_rotmat()
-        S_acc = get_cross_matrix(z_corr.acc)
-        S_omega = get_cross_matrix(z_corr.avel)
-
-        A_c[0:3, 3:6] = np.eye(3)
-        A_c[3:6, 6:9] = -Rq@S_acc
-        A_c[3:6, 9:12] = -Rq@self.accm_correction
-        A_c[6:9, 6:9] = -S_omega
-        A_c[6:9, 12:] = -self.gyro_correction
-        A_c[9:12, 9:12] = -self.accm_bias_p*np.eye(3)
-        A_c[12:, 12:] = -self.gyro_bias_p*np.eye(3)        
+    def __F__(self, dt):
+        f = np.eye(9)
+        f[6:, 3:6] = dt * np.eye(3)
+        return f
+    
+    def __A__(self, inc, dt):
+        return SE3_2.from_matrix(inc).inverse().adjoint()@self.__F__(dt)
+    
+    def __C__(self, angle_axis): #correction matrix
+        angle = np.linalg.norm(angle_axis)
+        if angle < 1e-8:
+            return np.eye(3)
         
-        
-        #assert np.all(A_c == models_solu.ModelIMU.A_c(self, x_est_nom, z_corr))
-        
-        return A_c
+        return np.eye(3) + ((1 + np.cos(angle))/np.sin(angle) - 2/angle)*cross_matrix(angle_axis/angle)
 
-    def get_error_G_c(self,
-                      x_est_nom: NominalState,
-                      ) -> 'np.ndarray[15, 15]':
-        """The continous noise covariance matrix, G, in (10.68)
+    def __Q__(self, measurement, dt, mode=1):
+        gyro = measurement.gyro
+        acc = measurement.acc
 
-        Hint: you can use block_3x3 to simplify indexing if you want to.
-        The first I element in G can be set as G[block_3x3(2, 1)] = -np.eye(3)
+        if mode == 0:
+            G = np.zeros((9, 6))
 
-        Args:
-            x_est_nom: previous nominal state
-        Returns:
-            G_c (ndarray[15, 15]): G in (10.68)
-        """
-        G_c = np.zeros((15, 12))
-        Rq = x_est_nom.ori.as_rotmat()
+            G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
+            G[3:6, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt
+            G[6:9, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt**2/2
+            return G@self.noise@G.T
+        elif mode == 1:
+            G = np.zeros((9, 6))
 
-        G_c[3:6, 0:3] = -Rq
-        G_c[6:9, 3:6] = -np.eye(3)
-        G_c[9:, 6:] = np.eye(6)    
-        
-        # G_c = models_solu.ModelIMU.get_error_G_c(self, x_est_nom))
-        return G_c
+            G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
+            G[3:6, 3:] = G[:3, :3]
+            G[6:9, 3:] = G[:3, :3]
+            return G@self.noise@G.T
+    
 
-    def get_discrete_error_diff(self,
-                                x_est_nom: NominalState,
-                                z_corr: CorrectedImuMeasurement,
-                                dt: float
-                                ) -> Tuple['np.ndarray[15, 15]',
-                                           'np.ndarray[15, 15]']:
-        """Get the discrete equivalents of A and GQGT in (4.63)
+        correction_mat = self.__C__(gyro*dt)
 
-        Hint: Use scipy.linalg.expm to get the matrix exponential
+        tangent_increments = np.concatenate([gyro*dt, acc*dt, correction_mat@acc*dt*dt*0.5])
+        Jr = SE3_2.jac_right(tangent_increments)
 
-        See (4.5 Discretization) and (4.63) for more information. 
-        Or see "Discretization of process noise" in 
-        https://en.wikipedia.org/wiki/Discretization
+        temp = np.zeros((9, 6)) #right part of last step leading to eq 46
+        temp[:3, :3] = dt*np.eye(3)
+        temp[3:6, 3:] = dt*np.eye(3)
+        temp[6:, 3:] = 0.5*dt*dt*correction_mat
+        G = Jr@temp
 
-        Args:
-            x_est_nom: previous nominal state
-            z_corr: corrected IMU measurement
-            dt: time step
-        Returns:
-            A_d (ndarray[15, 15]): discrede transition matrix
-            GQGT_d (ndarray[15, 15]): discrete noise covariance matrix
-        """
-        A_c = self.A_c(x_est_nom, z_corr)
-        G_c = self.get_error_G_c(x_est_nom)
-        GQGT_c = G_c@self.Q_c@G_c.T
+        return G@self.noise@G.T
 
-        
-        exponent = np.block([[-A_c, GQGT_c], [np.zeros(A_c.shape), A_c.T]])*dt
-        VanLoanMatrix = scipy.linalg.expm(exponent)
+    def __fourth_order__(self, Sigma, Q):
+        Sigma_pp = Sigma[:3, :3]
+        Sigma_vp = Sigma[3:6, :3]
+        Sigma_vv = Sigma[3:6, 3:6]
+        Sigma_vr = Sigma[3:6, 6:9]
+        Sigma_rp = Sigma[6:9, :3]
+        Sigma_rr = Sigma[6:9, 6:9]
 
-        A_d = VanLoanMatrix[15:, 15:].T
-        GQGT_d = A_d@VanLoanMatrix[:15, 15:]
+        Qpp = Q[:3, :3]
+        Qvp = Q[3:6, :3]
+        Qvv = Q[3:6, 3:6]
+        Qvr = Q[3:6, 6:9]
+        Qrp = Q[6:9, :3]
+        Qrr = Q[6:9, 6:9]
 
-        
-        # A_d, GQGT_d = models_solu.ModelIMU.get_discrete_error_diff(self, x_est_nom, z_corr, dt)
+        A1 = np.zeros((9, 9))
+        A1[:3, :3] = op1(Sigma_pp)
+        A1[3:6, :3] = op1(Sigma_vp + Sigma_vp.T)
+        A1[3:6, 3:6] = op1(Sigma_pp)
+        A1[6:9, :3] = op1(Sigma_rp + Sigma_rp.T)
+        A1[6:9, 6:9] = op1(Sigma_pp)
 
-        return A_d, GQGT_d
+        A2 = np.zeros((9, 9))
+        A2[:3, :3] = op1(Qpp)
+        A2[3:6, :3] = op1(Qvp + Qvp.T)
+        A2[3:6, 3:6] = op1(Qpp)
+        A2[6:9, :3] = op1(Qrp + Qrp.T)
+        A2[6:9, 6:9] = op1(Qpp)
 
-    def predict_err(self,
-                    x_est_prev: EskfState,
-                    z_corr: CorrectedImuMeasurement,
-                    dt: float,
-                    ) -> MultiVarGauss[ErrorState]:
-        """Predict the error state
+        Bpp = op2(Sigma_pp, Qpp)
+        Bvv = op2(Sigma_pp, Qvv) + op2(Sigma_vp.T, Qvp) +\
+            op2(Sigma_vp, Qvp.T) + op2(Sigma_vv, Qpp)
+        Brr = op2(Sigma_pp, Qrr) + op2(Sigma_rp.T, Qrp) +\
+            op2(Sigma_rp, Qrp.T) + op2(Sigma_rr, Qpp)
+        Bvp = op2(Sigma_pp, Qvp.T) + op2(Sigma_vp.T, Qpp)
+        Brp = op2(Sigma_pp, Qrp.T) + op2(Sigma_rp.T, Qpp)
+        Bvr = op2(Sigma_pp, Qvr) + op2(Sigma_vp.T, Qrp) +\
+            op2(Sigma_rp, Qvp.T) + op2(Sigma_vr, Qpp)
 
-        Hint: This is doing a discrete step of (10.68) where x_err 
-        is a multivariate gaussian.
+        B = np.zeros((9, 9))
+        B[:3, :3] = Bpp
+        B[:3, 3:6] = Bvp.T
+        B[:3, 6:9] = Brp.T
+        B[3:6, :3] = B[:3, 3:6].T
+        B[3:6, 3:6] = Bvv
+        B[3:6, 6:9] = Bvr
+        B[6:9, :3] = B[:3, 6:9].T
+        B[6:9, 3:6] = B[3:6, 6:9].T
+        B[6:9, 6:9] = Brr
 
-        Args:
-            x_est_prev: previous estimated eskf state
-            z_corr: corrected IMU measuremnt
-            dt: time step
-        Returns:
-            x_err_pred: predicted error state gaussian
-        """
-        x_est_prev_nom = x_est_prev.nom
-        x_est_prev_err = x_est_prev.err
-        Ad, GQGTd = self.get_discrete_error_diff(x_est_prev_nom, z_corr, dt)
-        
-        P_pred = Ad@x_est_prev_err.cov@Ad.T + GQGTd        
-        x_pred = Ad@x_est_prev_err.mean
-
-        x_err_pred = MultiVarGauss(x_pred, P_pred)
-        
-        # x_err_pred = models_solu.ModelIMU.predict_err(self, x_est_prev, z_corr, dt)
-        return x_err_pred
+        return (A1@Q + Q.T@A1.T + A2@Sigma + Sigma.T@A2.T)/12 + B/4

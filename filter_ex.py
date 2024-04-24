@@ -1,21 +1,23 @@
 import numpy as np
 from numpy.random import multivariate_normal
-from filter import Filter
-from measurements import IMU_Measurement, GNSS_Measurement, GNSS_Sensor
-from lie_theory import SE3_2, SO3, SE2, SO2
-from gaussian import ExponentialGaussian
 import matplotlib.pyplot as plt
-from utils import plot_2d_frame, find_mean, exp_cov
 from tqdm import tqdm
 
-# np.random.seed(42)
+from agent import Agent
+from measurements import IMU_Measurement, GNSS_Measurement
+from lie_theory import SE3_2, SO3, SE2, SO2
+from states import PlatformState
+from utils import plot_2d_frame, find_mean, exp_cov
+
+np.random.seed(1)
 
 n_steps = 300
-n_random = 10000
-#imu rate
-dt = 0.05 #sec per step
+n_random = 1000 #number of simulations
+dt = 0.05 #sec per step, imu rate
+T = (n_steps-1)*dt #end time
 
 g = np.array([0, 0, 9.81])
+
 #define ground truth (world)
 p = lambda t: np.array([t**2, 5*np.sin(t), 0])
 v = lambda t: np.array([2*t, 5*np.cos(t), 0])
@@ -23,47 +25,60 @@ a = lambda t: np.array([2, -5*np.sin(t), 0])
 w = lambda t: np.array([0, 0, 2*np.sin(0.1*t)])
 Rot = lambda t: SO3.Exp([0, 0, -20*np.cos(0.1*t)+20])
 
-#imu noise, gyro, acc
-covar = np.diag([0, 0, 0.4, 0, 0, 0])**2
-#imu measurements values
-gyro = lambda t, n: multivariate_normal(w(t), covar[:3, :3], size=n) #generate n gyro measurements at time t
-acc = lambda t, n: multivariate_normal(Rot(t).T@(a(t) + g), covar[3:, 3:], size=n) #imu measures g up, acc is in body
 
-#imu measurement
-measurement = lambda t, n: [IMU_Measurement(g_t, acc_t, covar) for g_t, acc_t in zip(gyro(t, n), acc(t, n))] #generate n IMU measurments at time t
+##Agent setup, noises
+IMU_noise = np.diag([0, 0, 0.4, 0, 0, 0])**2 #imu noise, gyro, acc
+GNSS_noise = np.diag([10, 10, 0.001])**2
+radar_noise = 0 # not used in this example
 
-#GNSS noise
-R = np.diag([10, 10, 0.001])**2
-#GNSS sensor
-sensor = GNSS_Sensor()
-pos_m = lambda t: multivariate_normal(p(t), R) #measured position
-gnssMeasurement = lambda t: GNSS_Measurement(pos_m(t), R) #create gnss measurement with noise
-
-#filter init
-filter = Filter(sensor)
-
+#Init poses
 T_sim = np.empty((n_steps, n_random, 5, 5))
-T_pred = np.empty(n_steps, dtype=ExponentialGaussian)
-#init pos
-T0 = SE3_2(Rot(0), v(0), p(0))
-T_pred[0] = ExponentialGaussian(T0, np.zeros((9, 9)))
-T_sim[0, :] = T0.as_matrix()
+T_pred = np.empty(n_steps, dtype=PlatformState)
+
+init_cov = np.diag([0, 0, 0.0, 0, 0, 0, 0, 0, 0])**2
+T0 = SE3_2(Rot(0), v(0), p(0)) #true start pos
+#draw random start pertrbations
+init_perturbs = multivariate_normal([0]*9, init_cov, n_random) #random perturbations
+for i in range(n_random):
+    T_sim[0, i] = (T0@SE3_2.Exp(init_perturbs[i])).as_matrix()
+
+init_state = PlatformState(T0@SE3_2.Exp(init_perturbs[0]), init_cov) #also perturb our calculation starting point
+T_pred[0] = init_state #save the initial state
+
+#create the agent
+agent = Agent(IMU_noise, GNSS_noise, radar_noise, init_state)
+
+
+###Generate measurments
+#imu measurements
+gyro = lambda t, n: multivariate_normal(w(t), IMU_noise[:3, :3], size=n) #generate n gyro measurements at time t
+acc = lambda t, n: multivariate_normal(Rot(t).T@(a(t) + g), IMU_noise[3:, 3:], size=n) #imu measures g up, acc is in body
+generate_IMU_measurements = lambda t, n: [IMU_Measurement(g_t, acc_t) for g_t, acc_t in zip(gyro(t, n), acc(t, n))] #generate n IMU measurments at time t
+#GNSS measurements
+pos_m = lambda t: multivariate_normal(p(t), GNSS_noise) #measured position
+gnssMeasurement = lambda t: GNSS_Measurement(pos_m(t)) #create gnss measurement with noise
+
+#propegate and simulate
 for k in tqdm(range(1, n_steps)):
-    meas = measurement(k*dt, n_random) #sample n_random different inputs
-    T_pred[k] = filter.propegate(T_pred[k-1], meas[0], dt) #use one of the random inputs in the full filter
+    z_imu = generate_IMU_measurements(k*dt, n_random) #sample n_random different inputs
+    # z_true = IMU_Measurement(w(k*dt), Rot(k*dt).T@(a(k*dt) + g))
+    agent.propegate(z_imu[0], dt) #use one of the random inputs in the full filter
+    T_pred[k] = agent.state #save the current state of the agent
     for i in range(n_random):
-        T_sim[k, i] = filter.__propegate_mean__(T_sim[k-1, i], meas[i], dt) #propegate the simulations with the corresponding random input
+        T_sim[k, i] = agent.inertialNavigation.__propegate_mean__(T_sim[k-1, i], z_imu[i], dt) #propegate the simulations with the corresponding random input
+#update 
+z_gnss = gnssMeasurement(dt*n_steps)
+agent.platform_update(z_gnss)
+T_update = agent.state
 
-z = gnssMeasurement(dt*n_steps)
-T_update = filter.update(T_pred[-1], z)
-
+#calculate SE3_2 distribution of simulated samples
 final_pose = np.empty(n_random, dtype=SE3_2) 
 for i in range(n_random):
     final_pose[i] = SE3_2(SO3(T_sim[-1, i, :3, :3]), T_sim[-1, i, :3, 3], T_sim[-1, i, :3, 4])
 
-mean = find_mean(final_pose, T_pred[-1].mean)
+mean = find_mean(final_pose, T_pred[-1].mean) #find mean, with the predicted mean as initial guess
 sim_cov = exp_cov(final_pose, mean)
-sim_pose = ExponentialGaussian(mean, sim_cov)
+sim_pose = PlatformState(mean, sim_cov)
 
 #plotting
 fig = plt.figure()
@@ -77,7 +92,7 @@ def plot_as_SE2(pose, color="red", z=None):
     m = pose.mean.as_matrix()
     c = extract@pose.cov@extract.T
     pose2D = SE2(SO2(m[:2, :2]), m[:2, 4])
-    exp = ExponentialGaussian(pose2D, c)
+    exp = PlatformState(pose2D, c)
     plot_2d_frame(ax, pose2D, scale=5)
     exp.draw_2Dtranslation_covariance_ellipse(ax, "xy", 3, 50, color=color)
     ax.plot(m[0, 4], m[1, 4], color=color, marker="o")
@@ -99,13 +114,13 @@ plot_2d_frame(ax, SE2.Exp([0, 0, 0]), scale=5)
 for i in range(100, n_steps+1, 50):
     idx = min(i, n_steps-1)
     plot_as_SE2(T_pred[idx], color="green")
-plot_as_SE2(T_update, color="blue", z=z.pos)
+plot_as_SE2(T_update, color="blue", z=z_gnss.pos)
 
-plot_2d_frame(ax, SE2(SO2(Rot(dt*n_steps).as_matrix()[:2, :2]), p(dt*n_steps)[:2]), scale=5)
+plot_2d_frame(ax, SE2(SO2(Rot(T).as_matrix()[:2, :2]), p(T)[:2]), scale=5)
 
 
 #plot gt
-ts = np.linspace(0, dt*n_steps, 101)
+ts = np.linspace(0, T, 101)
 xs = []
 ys = []
 for tsi in ts:
