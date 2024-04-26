@@ -164,7 +164,8 @@ class ExponentialGaussian(MultiVarGauss):
         polygons = extract_polygon_slices(p_grid)
         union = so.unary_union(polygons)
         if not union.geom_type == 'Polygon':
-            raise RuntimeError()
+            print("Error generating covariance polygon, skipping...")
+            return
         
         ax.fill(*union.exterior.xy, alpha=0.1, facecolor=color)
         ax.plot(*union.exterior.xy, color=color)  

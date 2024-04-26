@@ -45,3 +45,4 @@ class Target:
         
         #update CV
         self.state = TargetState(self.state.mean + marginal_err, marginal_cov)
+        return S

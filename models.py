@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-from states import TargetState
+from states import TargetState, PlatformState
 from lie_theory import SE3_2, SO3
 from utils import cross_matrix, op1, op2
 from measurements import IMU_Measurement
@@ -27,12 +27,13 @@ class CV_world:
                          [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
 
 
-# @dataclass
-# class CV_SE23: #assumes the change in rotation and velocity to be wiener processes
-#     state: SE3_2
+@dataclass
+class CV_SE23: #assumes the change in rotation and velocity to be wiener processes
+    var_acc: float
+    var_avel: float
 
-#     def propegate(self, dt):
-#         pass
+    def propegate(self, state: PlatformState, dt: float):
+        pass
 
 
 

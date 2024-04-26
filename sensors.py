@@ -54,6 +54,6 @@ class RelativePositionSensor(NonLinearMeasurementModel):
     def H(self, stacked_state: StackedState):
         target_state, platform_state_mean = stacked_state.mean
         R = platform_state_mean.R.as_matrix()
-        Jh_x = np.block([R, np.zeros((3, 3))])
-        Jh_T = np.block([R@cross_matrix(target_state.pos), np.zeros((3, 3)), -R])@platform_state_mean.adjoint()
+        Jh_x = np.block([R.T, np.zeros((3, 3))])
+        Jh_T = np.block([R.T@cross_matrix(target_state.pos), np.zeros((3, 3)), R.T])@platform_state_mean.adjoint()
         return np.block([Jh_x, Jh_T])

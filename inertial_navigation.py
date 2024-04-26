@@ -18,9 +18,6 @@ class InertialNavigation:
         new_mean = SE3_2.from_matrix(new_mean)
         new_cov = self.model.propegate_cov(current_state.cov, z, dt)
         return PlatformState(new_mean, new_cov)
-    
-    def __propegate_mean__(self, mean: np.ndarray, z: IMU_Measurement, dt: float, error_mode=1): #only for convenience when simulating
-        return self.model.propegate_mean(mean, z, dt, mode=error_mode)
 
     
     ### Kalman update

@@ -9,12 +9,12 @@ from lie_theory import SE3_2, SO3, SE2, SO2
 from states import PlatformState, TargetState
 from models import CV_world
 from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
-from utils import plot_2d_frame
+from plot_utils import *
 
 np.random.seed(42)
 
 #meta vars
-n_steps = 400
+n_steps = 400 #this is done 4 times
 #imu rate
 dt = 0.01 #sec per step
 T = (4*n_steps-1)*dt
@@ -28,28 +28,30 @@ w = lambda t: np.array([0, 0, 2*np.sin(0.1*t)])
 Rot = lambda t: SO3.Exp([0, 0, -20*np.cos(0.1*t)+20])
 
 #define ground truth of target
+# pt = lambda t: np.array([200*np.sin(t/8), 400*np.cos(t/8) - 100, 0])
+# vt = lambda t: np.array([25*np.cos(t/8), -50*np.sin(t/8), 0])
 pt = lambda t: np.array([30*t, -2*t**2 + 100, 0])
 vt = lambda t: np.array([30, -4*t, 0])
 
 
 #spawn agent
-IMU_cov = np.diag([0, 0, 0.4, 0, 0, 0])**2
+IMU_cov = np.diag([0, 0, 0.8, 2, 2, 0])**2
 
 GNSS_cov = np.diag([5, 5, 0.001])**2
-radar_cov = np.diag([0.1, 0.2, 0.001])**2
+radar_cov = np.diag([5, 5, 0.001])**2
 
 init_agent_mean = SE3_2(Rot(0), v(0), p(0))
-init_agent_cov = np.diag([0, 0, 0.2, 0, 0, 0, 0, 0, 0])**2
+init_agent_cov = np.diag([0, 0, 0.6, 0, 2, 0, 3, 1, 0])**2
 init_agent_pose = PlatformState(init_agent_mean, init_agent_cov)
 
 agent = Agent(IMU_cov, GNSS_cov, radar_cov, init_agent_pose)
 
 #spawn target
 init_target_mean = np.array([*pt(dt*n_steps), *vt(dt*n_steps)]) 
-init_target_cov = np.diag([0, 0, 0, 0, 0, 0])**2
+init_target_cov = np.diag([3, 3, 0, 5, 5, 0])**2
 init_target_pose = TargetState(init_target_mean, init_target_cov)
 
-cv_velocity_variance = 2**2
+cv_velocity_variance = 5**2
 
 target = Target(id=0, motion_model=CV_world(cv_velocity_variance), state=init_target_pose)
 
@@ -115,7 +117,7 @@ for k in tqdm(range(2*n_steps, 3*n_steps)):
 
 #update target
 y_target = targetMeasurement(dt*3*n_steps)
-agent.target_update(0, y_target)
+S = agent.target_update(0, y_target)
 
 #propegate platform and target
 for k in tqdm(range(3*n_steps, 4*n_steps)):
@@ -132,46 +134,20 @@ fig = plt.figure()
 ax = fig.add_subplot(111)
 
 
-def plot_as_SE2(pose, color="red", z=None):
-    extract = np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0],
-                        [0, 0, 0, 0, 0, 0, 1, 0, 0],
-                        [0, 0, 0, 0, 0, 0, 0, 1, 0]])
-    m = pose.mean.as_matrix()
-    c = extract@pose.cov@extract.T
-    pose2D = SE2(SO2(m[:2, :2]), m[:2, 4])
-    exp = PlatformState(pose2D, c)
-    plot_2d_frame(ax, pose2D, scale=5)
-    exp.draw_2Dtranslation_covariance_ellipse(ax, "xy", 3, 50, color=color)
-    ax.plot(m[0, 4], m[1, 4], color=color, marker="o")
-    if z is not None:
-        ax.plot(z[0], z[1], color=color, marker="x")
-
-def plot_as_2d(pose, color="red", z=None, num_std=3):
-    m = pose.mean[:2]
-    c = pose.cov[:2, :2]
-    pose2d = TargetState(m, c)
-    x, y = pose2d.covar_ellipsis(resolution=50, num_std=num_std)
-    ax.plot(x, y, label=f"{num_std}σ", color=color)
-    ax.plot(m[0], m[1], color=color, marker="o")
-
-    if z is not None:
-        ax.plot(z[0], z[1], color=color, marker="x")
+plot_2d_frame(ax, SE2(SO2(Rot(T).as_matrix()[:2, :2]), p(T)[:2]), color="red", scale=5)
 
 
+for i in range(0, len(agent_states), 100):
+    plot_as_SE2(ax, agent_states[i], color="green")
+plot_as_SE2(ax, agent_states[-1], color="green") #plot the last ellipsis
 
-for i in range(49, 4*n_steps, 100):
-    plot_as_SE2(agent_states[i], color="green")
 
-
-# plot_2d_frame(ax, SE2.Exp([0, 0, 0]), scale=5)
 ps = np.empty((4*n_steps, 2))
 for i in range(0, 4*n_steps):
     ps[i] = agent_states[i].mean.p[:2]
 ax.plot(ps[:,0], ps[:, 1], "g--")
 
 
-# plot_as_SE2(agent_states[2*n_steps - 1], color="blue")
-# plot_as_SE2(agent_states[2*n_steps + 1], color="blue")
 ax.plot(z_gnss.pos[0], z_gnss.pos[1], "bx")
 
 y_world = Rot(dt*3*n_steps)@y_target.relative_pos + p(dt*3*n_steps)
@@ -181,8 +157,16 @@ ax.plot(y_world[0], y_world[1], "bx")
 ax.plot(y_world_hat[0], y_world_hat[1], "bo")
 
 
-for i in range(0, 3*n_steps, 49):
-    plot_as_2d(target_states[i], color="pink")
+for i in range(0, len(target_states), 100):
+    plot_as_2d(ax, target_states[i], color="pink")
+plot_as_2d(ax, target_states[-1], color="pink")
+
+
+rotmat = Rot(dt*3*n_steps).as_matrix()
+nS = rotmat@S@rotmat.T
+zcovar = TargetState(y_world_hat, S)
+
+plot_as_2d(ax, zcovar, color="blue")
 
 
 #plot gt

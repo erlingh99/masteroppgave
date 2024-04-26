@@ -10,40 +10,6 @@ def from_cross_matrix(mat: np.ndarray[3, 3]) -> np.ndarray[3]:
     return np.array([-mat[1, 2],
                       mat[0, 2],
                      -mat[0, 1]])
-
-def plot_2d_frame(ax, pose, **kwargs):
-    """Plot the pose (R, t) in the global frame.
-    Keyword Arguments
-        * *alpha* -- Alpha value (transparency), default 1
-        * *axis_colors* -- List of colors for each axis, default ('r', 'g')
-        * *scale* -- Scale factor, default 1.0
-        * *text* -- Text description plotted at pose origin, default ''
-    :param ax: Current axes
-    :param pose: The pose (R, t) of the local frame relative to the global frame,
-        where R is a 2x2 rotation matrix and t is a 2D column vector.
-    :param kwargs: See above
-    :return: List of artists.
-    """
-    alpha = kwargs.get('alpha', 1)
-    axis_colors = kwargs.get('axis_colors', ('r', 'g'))
-    scale = kwargs.get('scale', 1)
-    text = kwargs.get('text', '')
-
-    artists = []
-
-    pts = scale * np.array([[0, 1, 0],
-                            [0, 0, 1]])
-    # If R is a valid rotation matrix, the columns are the local orthonormal basis vectors in the global frame.
-    # Use the group action to transform between frames
-    t_pts = pose@pts
-    for i in range(0, 2):
-        artists.extend(
-            ax.plot([t_pts[0, 0], t_pts[0, i+1]], [t_pts[1, 0], t_pts[1, i+1]], axis_colors[i] + '-', alpha=alpha))
-
-    if text:
-        artists.extend([ax.text(t_pts[0, 0], t_pts[1, 0], text, fontsize='large')])
-
-    return artists
     
 def exp_cov(poses, mean):
     N = len(poses)

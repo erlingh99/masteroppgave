@@ -7,7 +7,8 @@ from agent import Agent
 from measurements import IMU_Measurement, GNSS_Measurement
 from lie_theory import SE3_2, SO3, SE2, SO2
 from states import PlatformState
-from utils import plot_2d_frame, find_mean, exp_cov
+from utils import find_mean, exp_cov
+from plot_utils import *
 
 np.random.seed(1)
 
@@ -65,7 +66,7 @@ for k in tqdm(range(1, n_steps)):
     agent.propegate(z_imu[0], dt) #use one of the random inputs in the full filter
     T_pred[k] = agent.state #save the current state of the agent
     for i in range(n_random):
-        T_sim[k, i] = agent.inertialNavigation.__propegate_mean__(T_sim[k-1, i], z_imu[i], dt) #propegate the simulations with the corresponding random input
+        T_sim[k, i] = agent.inertialNavigation.model.propegate_mean(T_sim[k-1, i], z_imu[i], dt) #propegate the simulations with the corresponding random input
 #update 
 z_gnss = gnssMeasurement(dt*n_steps)
 agent.platform_update(z_gnss)
@@ -85,21 +86,7 @@ fig = plt.figure()
 ax = fig.add_subplot(111)
 
 
-def plot_as_SE2(pose, color="red", z=None):
-    extract = np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0],
-                        [0, 0, 0, 0, 0, 0, 1, 0, 0],
-                        [0, 0, 0, 0, 0, 0, 0, 1, 0]])
-    m = pose.mean.as_matrix()
-    c = extract@pose.cov@extract.T
-    pose2D = SE2(SO2(m[:2, :2]), m[:2, 4])
-    exp = PlatformState(pose2D, c)
-    plot_2d_frame(ax, pose2D, scale=5)
-    exp.draw_2Dtranslation_covariance_ellipse(ax, "xy", 3, 50, color=color)
-    ax.plot(m[0, 4], m[1, 4], color=color, marker="o")
-    if z is not None:
-        ax.plot(z[0], z[1], color=color, marker="x")
-
-plot_as_SE2(sim_pose, color="yellow")
+plot_as_SE2(ax, sim_pose, color="yellow")
 for i in range(n_random):
     ax.plot(T_sim[:, i, 0, 4], T_sim[:, i, 1, 4], color='gray', alpha=0.1) 
 ax.scatter(T_sim[-1, :, 0, 4], T_sim[-1, :, 1, 4], s=2, color='black')
@@ -113,8 +100,8 @@ ax.plot(x[:, 0], x[:, 1], "g--", alpha=1)
 plot_2d_frame(ax, SE2.Exp([0, 0, 0]), scale=5)
 for i in range(100, n_steps+1, 50):
     idx = min(i, n_steps-1)
-    plot_as_SE2(T_pred[idx], color="green")
-plot_as_SE2(T_update, color="blue", z=z_gnss.pos)
+    plot_as_SE2(ax, T_pred[idx], color="green")
+plot_as_SE2(ax, T_update, color="blue", z=z_gnss.pos)
 
 plot_2d_frame(ax, SE2(SO2(Rot(T).as_matrix()[:2, :2]), p(T)[:2]), scale=5)
 

@@ -1,6 +1,7 @@
-from lie_theory import SE3_2, SO3
 import numpy as np
 import matplotlib.pyplot as plt
+
+from lie_theory import SE3_2, SO3
 from models import IMU_Model
 from measurements import IMU_Measurement
 

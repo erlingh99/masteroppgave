@@ -44,8 +44,7 @@ class Agent:
     def target_update(self, target_id: int, target_measurement: TargetMeasurement):
         for target in self.targets:
             if target.id == target_id:
-                target.update(self.state, target_measurement, self.target_measurement_sensor)
-                return
+                return target.update(self.state, target_measurement, self.target_measurement_sensor)
         
     def add_target(self, target: Target):
         self.targets.append(target)

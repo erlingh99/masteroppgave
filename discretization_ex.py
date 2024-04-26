@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.random import multivariate_normal
-from filter import Filter
+from models import IMU_Model
 from measurements import IMU_Measurement
 from lie_theory import SE3_2, SO3
 import matplotlib.pyplot as plt
@@ -30,11 +30,11 @@ gyro = lambda t: multivariate_normal(w(t), covar[:3, :3]) #generate n gyro measu
 acc = lambda t: multivariate_normal(Rot(t).T@(a(t) + g), covar[3:, 3:]) #imu measures g up, acc is in body
 
 #imu measurement
-measurement = lambda t: IMU_Measurement(gyro(t), acc(t), covar) #generate n IMU measurments at time t
+measurement = lambda t: IMU_Measurement(gyro(t), acc(t)) #generate n IMU measurments at time t
 
 
 #filter init
-filter = Filter(None)
+filter = IMU_Model(covar)
 
 
 T_simple = np.empty((n_steps, 5, 5))
@@ -48,9 +48,9 @@ T_hard[0] = T0
 
 for k in tqdm(range(1, n_steps)):
     meas = measurement(k*dt) #get gt measureument
-    T_hard[k] = filter.__propegate_mean__(T_hard[k-1], meas, dt, mode=1)
-    T_medium[k] = filter.__propegate_mean__(T_medium[k-1], meas, dt, mode=2)
-    T_simple[k] = filter.__propegate_mean__(T_simple[k-1], meas, dt)
+    T_hard[k] = filter.propegate_mean(T_hard[k-1], meas, dt, mode=1)
+    T_medium[k] = filter.propegate_mean(T_medium[k-1], meas, dt, mode=2)
+    T_simple[k] = filter.propegate_mean(T_simple[k-1], meas, dt, mode=0)
 
 
 
