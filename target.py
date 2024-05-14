@@ -1,21 +1,40 @@
 from dataclasses import dataclass
+from abc import abstractmethod, ABC
 import numpy as np
-from models import CV_world
+from models import CV_world, CV_body
 from states import TargetState, PlatformState, StackedState
 from measurements import TargetMeasurement
 from sensors import RelativePositionSensor
+from utils import cross_matrix
+from lie_theory import SE3_2
 
 
 @dataclass
-class Target:
+class Target(ABC):
+    """
+    base target class
+    """
+    id: int
+    state: TargetState
+    var_acc: float
+
+    @abstractmethod
+    def propegate(self, *args):
+        pass
+
+    @abstractmethod
+    def update(self, *args):
+        pass
+
+@dataclass
+class TargetWorld(Target):
     """
     class representing a target in the platform tracker
     """
-    id: int
-    motion_model: CV_world
-    state: TargetState
+    def __post_init__(self):
+        self.motion_model = CV_world(self.var_acc)
 
-    def propegate(self, dt):
+    def propegate(self, dt, *args):
         self.state = self.motion_model.propegate(self.state, dt)
 
     def update(self, platform_state: PlatformState, z: TargetMeasurement, sensor: RelativePositionSensor):
@@ -30,19 +49,59 @@ class Target:
         zhat, S, H = sensor.predict_measurement(stacked_state)
         innov = z.relative_pos - zhat
         
-
-        cov = stacked_state.cov
+        P, _  = stacked_state.cov
         #Kalman gain
-        K = cov@np.linalg.solve(S.T, H).T #equiv to pose.cov@H.T@inv(S)
+        K = P@np.linalg.solve(S.T, H).T #equiv to pose.cov@H.T@inv(S)
 
         #full error estimate
-        full_err = K@innov
-        full_cov = (np.eye(15)-K@H)@cov
+        err = K@innov
+        cov = (np.eye(6)-K@H)@P
 
-        #marginalize
-        marginal_err = full_err[:6]
-        marginal_cov = full_cov[:6, :6]
         
         #update CV
-        self.state = TargetState(self.state.mean + marginal_err, marginal_cov)
-        return S
+        self.state = TargetState(self.state.mean + err, cov)
+
+    
+@dataclass
+class TargetBody(Target):
+    def __post_init__(self):
+        self.motion_model = CV_body(self.var_acc)
+
+    def propegate(self, dt, platform_state_k, platform_state_kp1, z, imu):
+        self.state = self.motion_model.propegate(self.state, platform_state_k, platform_state_kp1, z, imu, dt)
+
+    def update(self, _, z: TargetMeasurement, sensor: RelativePositionSensor):
+        H = np.block([np.eye(3), np.zeros((3,3))])
+        zhat = self.state.pos
+        innov = z.relative_pos - zhat
+        S = H@self.state.cov@H.T + sensor.get_measurement_covariance(self.state.mean)
+        K = self.state.cov@np.linalg.solve(S.T, H).T
+        err = K@innov
+        cov = (np.eye(6)-K@H)@self.state.cov
+        
+        self.state = TargetState(self.state.mean + err, cov)
+
+
+    def convert_state_to_world_lin(self, platform_state: PlatformState):
+        Rhat = platform_state.rot
+        J1 = np.block([[Rhat, np.zeros((3,3))],
+                        [np.zeros((3, 3)), Rhat]])
+        J2 = np.block([[-Rhat@cross_matrix(self.state.pos), np.zeros((3,3)), Rhat],
+                        [-Rhat@cross_matrix(self.state.vel), Rhat, np.zeros((3,3))]])
+        
+        return TargetState(platform_state.mean.action2(self.state.mean), J1@self.state.cov@J1.T + J2@platform_state.cov@J2.T)
+
+    def convert_state_to_world_SE3_2(self, platform_state: PlatformState):
+        tau = np.array([0,0,0,*self.state.vel, *self.state.pos])
+        jr = SE3_2.jac_right(tau)
+        local_mean = SE3_2.Exp(tau)
+        extended_cov = np.zeros((9, 9))
+        reorder_mat = np.block([[np.zeros((3,3)), np.eye(3)], [np.eye(3), np.zeros((3,3))]]) #need to reorder the states to match the SE3_2 convention
+        extended_cov[3:, 3:] = reorder_mat@self.state.cov@reorder_mat.T
+        
+        local_cov = jr@extended_cov@jr.T
+
+        tot_mean = platform_state.mean@local_mean
+        ad_inv = local_mean.inverse().adjoint()
+        tot_cov = ad_inv@platform_state.cov@ad_inv.T + local_cov
+        return PlatformState(tot_mean, tot_cov)

@@ -41,5 +41,4 @@ class StackedState: #representing the combined state of the above
     
     @property
     def cov(self):
-        return np.block([[self.target_state.cov, np.zeros((6,9))],
-                         [np.zeros((9,6)), self.platform_state.cov]])
+        return self.target_state.cov, self.platform_state.cov

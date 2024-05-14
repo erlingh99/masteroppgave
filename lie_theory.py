@@ -402,11 +402,11 @@ class SE3(LieGroup):
         rho_vec = xi_vec[3:]
         theta = np.linalg.norm(theta_vec)
 
-        if theta < 1e-10:
-            return np.zeros((3, 3))
-
         rho_hat = cross_matrix(rho_vec)
         theta_hat = cross_matrix(theta_vec)
+
+        if theta < 1e-10:
+            return 0.5 * rho_hat
 
         return 0.5 * rho_hat + ((theta - np.sin(theta)) / theta ** 3) * \
                (theta_hat @ rho_hat + rho_hat @ theta_hat + theta_hat @ rho_hat @ theta_hat) - \
@@ -455,6 +455,10 @@ class SE3_2(LieGroup):
 
     def action(self, x: np.ndarray[3]) -> np.ndarray[3]:
         return self.R@x + self.p
+    
+    def action2(self, x: np.ndarray[6]) -> np.ndarray[6]:
+        return np.concatenate([self.R@x[:3] + self.p,
+                               self.R@x[3:] + self.v])
     
     def compose(self, other: "SE3_2") -> "SE3_2":
         return SE3_2(self.R@other.R, self.v + self.R@other.v, self.p + self.R@other.p)

@@ -6,39 +6,6 @@ from utils import cross_matrix, op1, op2
 from measurements import IMU_Measurement
 
 @dataclass
-class CV_world:
-    var_acc: float #velocity variance, assumed same for x y z
-
-    def propegate(self, state: TargetState, dt: float):
-        F = self.F(dt)
-        new_mean = F@state.mean
-        new_cov = F@state.cov@F.T + self.Q(dt)
-
-        return TargetState(new_mean, new_cov)
-        
-
-    def F(self, dt: float):
-        return np.block([[       np.eye(3), dt*np.eye(3)],
-                         [np.zeros((3, 3)),    np.eye(3)]])
-    
-
-    def Q(self, dt: float):
-        return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
-                         [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
-
-
-@dataclass
-class CV_SE23: #assumes the change in rotation and velocity to be wiener processes
-    var_acc: float
-    var_avel: float
-
-    def propegate(self, state: PlatformState, dt: float):
-        pass
-
-
-
-
-@dataclass
 class IMU_Model:
     """
     bias and frame correction can be implemented here
@@ -197,3 +164,81 @@ class IMU_Model:
         B[6:9, 6:9] = Brr
 
         return (A1@Q + Q.T@A1.T + A2@Sigma + Sigma.T@A2.T)/12 + B/4
+
+
+
+@dataclass
+class CV_world:
+    var_acc: float #velocity variance, assumed same for x y z
+
+    def propegate(self, state: TargetState, dt: float):
+        F = self.F(dt)
+        new_mean = F@state.mean
+        new_cov = F@state.cov@F.T + self.Q(dt)
+
+        return TargetState(new_mean, new_cov)
+        
+
+    def F(self, dt: float):
+        return np.block([[       np.eye(3), dt*np.eye(3)],
+                         [np.zeros((3, 3)),    np.eye(3)]])
+    
+
+    def Q(self, dt: float):
+        return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
+                         [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
+
+
+@dataclass
+class CV_body:
+    var_acc: float
+
+    def propegate(self, state: TargetState, platform_state_k: PlatformState, platform_state_kp1: PlatformState, z: IMU_Measurement, imu: IMU_Model, dt: float):
+
+
+        Rhatk = platform_state_k.rot
+        Rhatkp1 = platform_state_kp1.rot
+
+        dR = Rhatkp1.T@Rhatk
+        A = np.block([[dR, dt*dR], [np.zeros((3,3)), dR]])
+        b = np.concatenate([Rhatkp1.T@(platform_state_k.pos - platform_state_kp1.pos + dt*platform_state_k.vel),
+                            Rhatkp1.T@(platform_state_k.vel - platform_state_kp1.vel)])
+
+
+        n_mean = A@state.mean + b 
+
+        
+        J_xb_Tinv = np.block([[-Rhatkp1.T@cross_matrix(n_mean[:3]), np.zeros((3,3)), Rhatkp1.T],
+                              [-Rhatkp1.T@cross_matrix(n_mean[3:]), Rhatkp1.T, np.zeros((3,3))]])
+
+        J_Tinv_T = -platform_state_kp1.mean.adjoint()
+
+        J_xb_xw = np.block([[Rhatkp1, np.zeros((3,3))],
+                            [np.zeros((3, 3)), Rhatkp1]])
+
+        J_xw_T =  np.block([[-Rhatk@cross_matrix(state.pos), np.zeros((3,3)), Rhatk],
+                            [-Rhatk@cross_matrix(state.vel), Rhatk, np.zeros((3,3))]])
+    
+        Fcv = self.Fcv(dt)
+        Fdt = imu.__F__(dt)
+        Ad_inc_inv = SE3_2.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
+
+        J1 = J_xb_Tinv@J_Tinv_T@Ad_inc_inv@Fdt + J_xb_xw@Fcv@J_xw_T
+        J2 = J_xb_Tinv@J_Tinv_T
+        J3 = J_xb_xw
+        
+        cv_noise = self.Q(dt)
+        imu_noise = imu.__Q__(z, dt)
+
+        n_cov = J1@platform_state_k.cov@J1.T + J2@imu_noise@J2.T + J3@cv_noise@J3.T
+
+        return TargetState(n_mean, A@state.cov@A.T + n_cov)
+                                                            
+    def Fcv(self, dt: float):
+        return np.block([[       np.eye(3), dt*np.eye(3)],
+                         [np.zeros((3, 3)),    np.eye(3)]])
+    
+    def Q(self, dt: float):
+        return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
+                         [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
+

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from agent import Agent
-from target import TargetWorld
+from target import TargetBody
 from lie_theory import SE3_2, SO3, SE2, SO2
 from states import PlatformState, TargetState
 from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
@@ -55,7 +55,7 @@ init_target_pose = TargetState(init_target_mean, init_target_cov)
 cv_velocity_variance = 5**2
 
 TARGET_ID = 0
-target = TargetWorld(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
+target = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
 
 
 #generate IMU measurements
@@ -82,7 +82,7 @@ fig = plt.figure()
 ax = fig.add_subplot(111)
 
 plot_as_SE2(ax, agent.state, color="green") #plot initial state
-plot_as_2d(ax, agent.targets[0].state, color="pink")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="pink")
 
 agent_pos = np.empty((2, n_steps*n_times + 1))
 #sim
@@ -111,7 +111,7 @@ for n in tqdm(range(n_times)):
     plot_2d_frame(ax, SE2(SO2(Rot(t).as_matrix()[:2, :2]), p(t)[:2]), color="red", scale=5) #gt frame
 
     plot_as_SE2(ax, agent.state, color="green")
-    plot_as_2d(ax, agent.targets[0].state, color="pink")
+    plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="pink")
 
 
 
@@ -125,7 +125,7 @@ for n in tqdm(range(n_times)):
 
 
 plot_as_SE2(ax, agent.state, color="green") #plot the last ellipsis
-plot_as_2d(ax, agent.targets[0].state, color="pink")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="pink")
 
 agent_pos[:, -1] = agent.state.pos[:2] #add final position
 ax.plot(agent_pos[0,:], agent_pos[1, :], "g--")

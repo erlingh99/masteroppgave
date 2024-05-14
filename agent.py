@@ -22,14 +22,16 @@ class Agent:
 
         self.target_measurement_sensor = RelativePositionSensor(target_sensor_cov)
 
-        imu = IMU_Model(IMU_cov)
+        self.imu = IMU_Model(IMU_cov)
         GNSS_sensor = ManifoldGNSS_Sensor(GNSS_sensor_cov)
-        self.inertialNavigation = InertialNavigation(imu, GNSS_sensor)
+        self.inertialNavigation = InertialNavigation(self.imu, GNSS_sensor)
 
 
     def propegate(self, imu_measurement: IMU_Measurement, dt: float):
+        prev_state = self.state
         self.platform_propegate(imu_measurement, dt)
-        self.targets_propegate(dt)
+
+        self.targets_propegate(dt, prev_state, self.state, imu_measurement)
 
     def platform_propegate(self, imu_measurement: IMU_Measurement, dt: float):
        self.state = self.inertialNavigation.propegate(self.state, imu_measurement, dt)
@@ -37,9 +39,9 @@ class Agent:
     def platform_update(self, measurement: GNSS_Measurement):
         self.state = self.inertialNavigation.update(self.state, measurement)
 
-    def targets_propegate(self, dt: float):
+    def targets_propegate(self, dt: float, prev_state, curr_state, z):
        for target in self.targets:
-           target.propegate(dt)
+           target.propegate(dt, prev_state, curr_state, z, self.imu)
 
     def target_update(self, target_id: int, target_measurement: TargetMeasurement):
         for target in self.targets:

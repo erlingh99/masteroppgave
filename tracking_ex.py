@@ -4,10 +4,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from agent import Agent
-from target import Target
+from target import TargetWorld
 from lie_theory import SE3_2, SO3, SE2, SO2
 from states import PlatformState, TargetState
-from models import CV_world
 from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
 from plot_utils import *
 
@@ -53,7 +52,8 @@ init_target_pose = TargetState(init_target_mean, init_target_cov)
 
 cv_velocity_variance = 5**2
 
-target = Target(id=0, motion_model=CV_world(cv_velocity_variance), state=init_target_pose)
+TARGET_ID = 0
+target = TargetWorld(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
 
 
 #generate IMU measurements
@@ -117,7 +117,7 @@ for k in tqdm(range(2*n_steps, 3*n_steps)):
 
 #update target
 y_target = targetMeasurement(dt*3*n_steps)
-S = agent.target_update(0, y_target)
+agent.target_update(TARGET_ID, y_target)
 
 #propegate platform and target
 for k in tqdm(range(3*n_steps, 4*n_steps)):
