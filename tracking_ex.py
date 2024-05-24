@@ -162,11 +162,11 @@ for i in range(0, len(target_states), 100):
 plot_as_2d(ax, target_states[-1], color="pink")
 
 
-rotmat = Rot(dt*3*n_steps).as_matrix()
-nS = rotmat@S@rotmat.T
-zcovar = TargetState(y_world_hat, S)
+# rotmat = Rot(dt*3*n_steps).as_matrix()
+# nS = rotmat@S@rotmat.T
+# zcovar = TargetState(y_world_hat, S)
 
-plot_as_2d(ax, zcovar, color="blue")
+# plot_as_2d(ax, zcovar, color="blue")
 
 
 #plot gt

@@ -57,19 +57,23 @@ class SO2(LieGroup):
         return cls(R=np.array([[c, -s], [s, c]]))
     
     def Log(self):
-        return np.arccos(self.R[0, 0])
+        return np.arctan2(self.R[1, 0], self.R[0, 0])
     
     def action(self, x):
         return self.R@x
     
     def compose(self, other: LieGroup):
-        return self.R@other.R
+        return SO2(self.R@other.R)
     
     def adjoint(self):
         return 1
     
     def inverse(self) -> LieGroup:
         return SO2(self.R.T)
+    
+    @property
+    def T(self):
+        return self.inverse()
     
     @property
     def mat(self):
@@ -132,13 +136,14 @@ class SE2(LieGroup):
         return SE2(self.R@other.R, self.R@other.t + self.t)
     
     def inverse(self) -> LieGroup:
-        return SE2(self.R.T, -self.R.t@self.t)
+        return SE2(self.R.T, -(self.R.T@self.t))
     
     def action(self, x):
         return self.R@x + self.t.reshape(2,1)
     
     def adjoint(self):
-        return 0
+        raise NotImplementedError()
+        # return 0
     
     def rotation_matrix(self):
         return self.R.mat
@@ -333,7 +338,7 @@ class SE3(LieGroup):
     size = (4, 4)
 
     def action(self, x: np.ndarray[3]) -> np.ndarray[3]:
-        return self.R@x + self.t
+        return self.R@x + self.t.reshape((3, 1))
 
     def compose(self, other: "SE3") -> "SE3":
         return SE3(self.R@other.R, self.t + self.R@other.t)

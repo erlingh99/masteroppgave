@@ -10,6 +10,23 @@ def from_cross_matrix(mat: np.ndarray[3, 3]) -> np.ndarray[3]:
     return np.array([-mat[1, 2],
                       mat[0, 2],
                      -mat[0, 1]])
+
+def exp_NEES(pose, gt_mean):
+    m, c = pose.mean, pose.cov
+    if np.linalg.det(c) == 0:
+        print("singular covariance, NEES not possible")
+        return 0
+    err = (m.inverse()@gt_mean).Log()
+    return err.T@np.linalg.solve(c, err)
+
+def NEES(pose, gt_mean):
+    m, c = pose.mean, pose.cov
+    if np.linalg.det(c) == 0:
+        print("singular covariance, NEES not possible")
+        return 0
+    err = gt_mean-m
+    return err.T@np.linalg.solve(c, err)
+
     
 def exp_cov(poses, mean):
     N = len(poses)
@@ -27,9 +44,10 @@ def find_mean(poses, init_guess, n_iter=100, eps=1e-5):
     """
     N = poses.shape[0]
     curr_mean = init_guess.copy()
+    n = curr_mean.ndim
     for _ in range(n_iter):
         inv = curr_mean.inverse()
-        s = np.empty((9, ))
+        s = np.empty((n, ))
         for i in range(N):
             s += (inv@poses[i]).Log()
         avg_chg = s/N

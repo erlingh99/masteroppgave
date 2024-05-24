@@ -27,7 +27,7 @@ class IMU_Model:
         cov_tmp = Ai@cov@Ai.T
         cov_2nd = cov_tmp + Qi
         cov_4th = cov_2nd + self.__fourth_order__(cov_tmp, Qi)
-        return cov_4th
+        return cov_4th#, cov_2nd
 
 
     def gravityMatrix(self, dt):
@@ -45,24 +45,26 @@ class IMU_Model:
     
     def incrementMatrix(self, measurement: IMU_Measurement, dt, mode=1):
         """Compute Upsilon (IMU)"""
-
-        deltaR = SO3.Exp(dt*measurement.gyro).as_matrix()
-        upsilon = np.eye(5)
-        upsilon[:3, :3] = deltaR
-        upsilon[:3, 3] = measurement.acc*dt
-        upsilon[:3, 4] = 1/2*(dt**2)*measurement.acc
+        g = measurement.gyro
+        a = measurement.acc
+        return SE3_2.Exp(np.concatenate([dt*g, dt*a, self.__C__(g*dt)@a*0.5*dt*dt])).as_matrix()
+        # deltaR = SO3.Exp(dt*measurement.gyro).as_matrix()
+        # upsilon = np.eye(5)
+        # upsilon[:3, :3] = deltaR
+        # upsilon[:3, 3] = measurement.acc*dt
+        # upsilon[:3, 4] = 1/2*(dt**2)*measurement.acc
         
-        if mode == 1:
-            Jl = SO3.jac_left(dt*measurement.gyro)
-            Hl = Jl@self.__C__(measurement.gyro*dt)
-            upsilon[:3, 3] = Jl@upsilon[:3, 3]
-            upsilon[:3, 4] = Hl@upsilon[:3, 4]
-        elif mode == 2:
-            Jl = SO3.jac_left(dt*measurement.gyro)
-            upsilon[:3, 3] = Jl@upsilon[:3, 3]
-            upsilon[:3, 4] = Jl@upsilon[:3, 4] #np.zeros(3)
+        # if mode == 1:
+        #     Jl = SO3.jac_left(dt*measurement.gyro)
+        #     Hl = Jl@self.__C__(measurement.gyro*dt)
+        #     upsilon[:3, 3] = Jl@upsilon[:3, 3]
+        #     upsilon[:3, 4] = Hl@upsilon[:3, 4]
+        # elif mode == 2:
+        #     Jl = SO3.jac_left(dt*measurement.gyro)
+        #     upsilon[:3, 3] = Jl@upsilon[:3, 3]
+        #     upsilon[:3, 4] = Jl@upsilon[:3, 4] #np.zeros(3)
 
-        return upsilon
+        # return upsilon
 
 
     def __F__(self, dt):
@@ -80,7 +82,7 @@ class IMU_Model:
         
         return np.eye(3) + ((1 + np.cos(angle))/np.sin(angle) - 2/angle)*cross_matrix(angle_axis/angle)
 
-    def __Q__(self, measurement, dt, mode=1):
+    def __Q__(self, measurement, dt, mode=100):
         gyro = measurement.gyro
         acc = measurement.acc
 
@@ -96,7 +98,7 @@ class IMU_Model:
 
             G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
             G[3:6, 3:] = G[:3, :3]
-            G[6:9, 3:] = G[:3, :3]
+            G[6:9, 3:] = G[:3, :3]*dt/2
             return G@self.noise@G.T
     
 
@@ -207,14 +209,15 @@ class CV_body:
 
         n_mean = A@state.mean + b 
 
+        lin_point = platform_state_kp1.mean.action2(n_mean)
         
-        J_xb_Tinv = np.block([[-Rhatkp1.T@cross_matrix(n_mean[:3]), np.zeros((3,3)), Rhatkp1.T],
-                              [-Rhatkp1.T@cross_matrix(n_mean[3:]), Rhatkp1.T, np.zeros((3,3))]])
+        J_xb_Tinv = np.block([[-Rhatkp1.T@cross_matrix(lin_point[:3]), np.zeros((3,3)), Rhatkp1.T],
+                              [-Rhatkp1.T@cross_matrix(lin_point[3:]), Rhatkp1.T, np.zeros((3,3))]])
 
         J_Tinv_T = -platform_state_kp1.mean.adjoint()
 
-        J_xb_xw = np.block([[Rhatkp1, np.zeros((3,3))],
-                            [np.zeros((3, 3)), Rhatkp1]])
+        J_xb_xw = np.block([[Rhatkp1.T, np.zeros((3,3))],
+                            [np.zeros((3, 3)), Rhatkp1.T]])
 
         J_xw_T =  np.block([[-Rhatk@cross_matrix(state.pos), np.zeros((3,3)), Rhatk],
                             [-Rhatk@cross_matrix(state.vel), Rhatk, np.zeros((3,3))]])
@@ -242,3 +245,48 @@ class CV_body:
         return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
                          [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
 
+@dataclass
+class CV_body2:
+    var_acc: float
+
+    def propegate(self, state: PlatformState, platform_state_k: PlatformState, platform_state_kp1: PlatformState, z: IMU_Measurement, imu: IMU_Model, dt: float):
+
+        
+        F = imu.__F__(dt)
+
+        ad1 = self.f(state.mean, dt).inverse().adjoint()
+        ad2 = self.f(platform_state_k.mean@state.mean, dt).inverse().adjoint()
+        ad3 = platform_state_kp1.mean.adjoint()
+        ad4 = SE3_2.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
+
+        J1 = (ad1 - ad2@ad3@ad4)@F
+        J2 = ad2@ad3
+
+        imu_noise = imu.__Q__(z, dt)
+
+        cov = J1@platform_state_k.cov@J1.T + F@state.cov@F.T + self.Q_ext(dt) + J2@imu_noise@J2.T
+
+        mean = platform_state_kp1.mean.inverse()@self.f(platform_state_k.mean@state.mean, dt)     
+        
+        #
+        ad = SE3_2(mean.R, np.zeros((3)), np.zeros((3))).adjoint()
+        cov = ad@cov@ad.T
+        mean.R = SO3(np.eye(3))
+
+        return PlatformState(mean, cov)
+
+    def f(self, T: SE3_2, dt):
+        T = T.copy()
+        T.p = T.p + dt*T.v
+        return T
+    
+
+    def Q(self, dt: float):
+        return np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
+                         [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
+    
+    def Q_ext(self, dt):
+        H = np.block([[np.zeros((3,6))],
+                      [np.zeros((3,3)), np.eye(3)],
+                      [np.eye(3), np.zeros((3,3))]])
+        return H@self.Q(dt)@H.T

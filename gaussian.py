@@ -54,23 +54,15 @@ class MultiVarGauss:
     def cholesky(self) -> np.ndarray:
         return np.linalg.cholesky(self.cov)
     
-    def covar_ellipsis(self, num_std=3, resolution=20) -> np.ndarray:        
-        return self.__covar_helper__(num_std, resolution) + self.mean[:, np.newaxis]
-
-    def __covar_helper__(self, num_std=3, resolution=20) -> np.ndarray:    
-        lambda_, eig_vals = np.linalg.eig(self.cov)
-        lambda_root = np.sqrt(lambda_)
-
-        ndim = self.cov.shape[0] #the number of dimensions, aka the number of cartesian coordinates
-
+    @staticmethod
+    def __hyperspherical_coords__(ndim, resolution):
         u = np.linspace(0, np.pi, resolution+1)
         v = np.linspace(0, 2*np.pi, resolution+1)
 
         spherical_coords = np.meshgrid(*np.array([u]*(ndim-2)), v)
-
-        #need only ndim - 1 spherical coords (r is constant on the hyper-sphere)
-        #create cartesian coords
+        # need only ndim - 1 spherical coords (r is constant on the hyper-sphere)
         cart_coord = np.empty((ndim, (resolution+1)**(ndim-1)))
+        # create cartesian coords
         for d in range(ndim):
             x_ns = 1
             for dd in range(d+1):
@@ -81,10 +73,53 @@ class MultiVarGauss:
                 else:
                     x_ns *= np.sin(spherical_coords[dd])
 
-            cart_coord[d, :] = x_ns.ravel()
-
+            cart_coord[d, :] = x_ns.T.ravel()
+        return cart_coord
         
+    def covar_ellipsis(self, num_std=3, resolution=20) -> np.ndarray:        
+        return self.__covar_helper__(num_std, resolution) + self.mean[:, np.newaxis]
+
+
+    def __covar_helper__(self, num_std=3, resolution=20) -> np.ndarray:    
+        lambda_, eig_vals = np.linalg.eig(self.cov)
+        lambda_root = np.sqrt(lambda_)
+        
+        idx = np.argsort(-lambda_root)
+        lambda_root = lambda_root[idx]
+        eig_vals = eig_vals[:, idx]
+
+        ndim = self.cov.shape[0] #the number of dimensions, aka the number of cartesian coordinates
+        cart_coord = MultiVarGauss.__hyperspherical_coords__(ndim, resolution)        
         return eig_vals@np.diag(lambda_root)@cart_coord*num_std
+
+
+    def draw_significant_ellipses(self, ax, n_ellipsis=3, n_std=3, n_points=50, color="red"):
+        """
+        Draw ellipse based on the 3 more important directions of the covariance
+        """
+        n_ellipsis = max(1, min(n_ellipsis, 3))
+
+        idxs = [[0, 1], [0, 2], [1, 2]]
+
+        eig_vals, V = np.linalg.eig(self.cov)
+        eig_root = np.sqrt(eig_vals)
+        dirs = n_std*V@np.diag(eig_root)
+        idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
+       
+        coords = MultiVarGauss.__hyperspherical_coords__(2, n_points)
+
+        lines = np.empty((coords.shape[1], self.mean.shape[0]))
+
+        for n in range(n_ellipsis):
+            xi = dirs[:, idx[idxs[n]]]@coords
+
+            for i, x in enumerate(xi.T):
+                lines[i, :] = x + self.mean
+
+            if self.mean.shape[0] == 3:
+                ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color)
+            else:
+                ax.plot(lines[:, 0], lines[:, 1], color=color)
 
 
     def __iter__(self):
@@ -129,7 +164,7 @@ class ExponentialGaussian(MultiVarGauss):
     def project_translation(self, num_std=3, n_points=20): #project uncertainty ellipsis from exponential space. Also use to extract marginal covariances for plotting
         """
         Creates hyper-ellipsis in exp-space (ndim = LieGroup.ndim), 
-        use exp-map to map to SE3_2 extract the values to plot from each pose, eg translation xyz
+        use exp-map of LieGroup to extract the values to plot from each pose, eg translation xyz
         """
         transformed = self.covar_ellipsis(num_std, n_points)
         return np.array([t.t for t in transformed])
@@ -164,7 +199,8 @@ class ExponentialGaussian(MultiVarGauss):
         polygons = extract_polygon_slices(p_grid)
         union = so.unary_union(polygons)
         if not union.geom_type == 'Polygon':
-            print("Error generating covariance polygon, skipping...")
+            print("Error generating covariance polygon, plotting the raw points...")
+            ax.plot(coords[:, I[0]], coords[:, I[1]])
             return
         
         ax.fill(*union.exterior.xy, alpha=0.1, facecolor=color)
@@ -174,36 +210,57 @@ class ExponentialGaussian(MultiVarGauss):
         """
         Draw ellipse based on the 3 more important directions of the covariance
         """
-        n_ellipsis = max(0, min(n_ellipsis, 3))
+        n_ellipsis = max(1, min(n_ellipsis, 3))
+
+        idxs = [[0, 1], [0, 2], [1, 2]]
 
         eig_vals, V = np.linalg.eig(self.cov)
         eig_root = np.sqrt(eig_vals)
         dirs = n_std*V@np.diag(eig_root)
         idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
        
-        d1 = dirs[:, idx[0]].reshape(-1, 1)
-        d2 = dirs[:, idx[1]].reshape(-1, 1)
-        d3 = dirs[:, idx[2]].reshape(-1, 1)
+        coords = MultiVarGauss.__hyperspherical_coords__(2, n_points)
 
-        t = np.linspace(0, 2*np.pi, n_points)
-        c = np.cos(t).reshape(1, -1)
-        s = np.sin(t).reshape(1, -1)
+        lines = np.empty((coords.shape[1], 2))
 
-        lines = np.empty((n_points, 2))
         for n in range(n_ellipsis):
-            if n == 0:
-                xi = d1@c + d2@s
-            elif n == 1:
-                xi = d1@c + d3@s
-            elif n == 2:
-                xi = d2@c + d3@s
+            xi = dirs[:, idx[idxs[n]]]@coords
 
             for i, x in enumerate(xi.T):
                 Ttemp = self.mean@self.mean.__class__.Exp(x)
-                lines[i, 0] = Ttemp.t[0]
-                lines[i, 1] = Ttemp.t[1]
+                lines[i] = Ttemp.t[:2]
+        
+            ax.fill(lines[:, 0], lines[:, 1], color=color, alpha=0.2)
+            # ax.plot(lines[:, 0], lines[:, 1], color="green")
 
-            ax.plot(lines[:, 0], lines[:, 1], color=color)
+    def draw_significant_spheres(self, ax, n_spheres=4, n_std=3, n_points=50, color="rgbk"):
+        """
+        Draw spheres (3d) based on the 1 to 3 more important directions of the covariance
+        """
+        n_spheres = max(1, min(n_spheres, 4))
+
+        idxs = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+
+        eig_vals, V = np.linalg.eig(self.cov)
+        eig_root = np.sqrt(eig_vals)
+        dirs = n_std*V@np.diag(eig_root)
+        idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
+
+        cart_coords = MultiVarGauss.__hyperspherical_coords__(ndim=3, resolution=n_points) #coordinates of identity sphere
+
+        lines = np.empty((len(cart_coords[0]), 3))
+
+        for n in range(n_spheres):
+            
+            xi = dirs[:, idx[idxs[n]]]@cart_coords
+
+            for i, x in enumerate(xi.T):
+                Ttemp = self.mean@self.mean.__class__.Exp(x)
+                lines[i] = Ttemp.t
+
+            # ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color[n])
+            ax.plot_surface(lines[:, 0].reshape(n_points+1, -1), lines[:, 1].reshape(n_points+1, -1), lines[:, 2].reshape(n_points+1, -1), alpha=0.4, color=color[n])
+    
     
     def copy(self):
         return ExponentialGaussian(self.mean.copy(), self.cov.copy())

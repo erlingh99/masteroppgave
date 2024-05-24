@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from agent import Agent
-from target import TargetBody
+from target import TargetBody2 as TargetBody
+# from target import TargetBody
 from lie_theory import SE3_2, SO3, SE2, SO2
 from states import PlatformState, TargetState
 from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
@@ -36,9 +37,8 @@ vt = lambda t: np.array([30, -4*t, 0])
 
 #spawn agent
 IMU_cov = np.diag([0, 0, 0.2, 2, 2, 0])**2
-
 GNSS_cov = np.diag([5, 5, 0.001])**2
-radar_cov = np.diag([5, 5, 0.001])**2
+radar_cov = np.diag([15, 15, 0.001])**2
 
 init_agent_cov = np.diag([0, 0, 0.1, 0, 0, 0, 2, 2, 0])**2
 init_agent_gt = SE3_2(Rot(0), v(0), p(0))
@@ -52,7 +52,7 @@ init_target_cov = np.diag([3, 3, 0, 5, 5, 0])**2
 init_target_mean = multivariate_normal(np.array([*pt(0), *vt(0)]), init_target_cov)
 init_target_pose = TargetState(init_target_mean, init_target_cov)
 
-cv_velocity_variance = 5**2
+cv_velocity_variance = 2**2
 
 TARGET_ID = 0
 target = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
@@ -83,6 +83,7 @@ ax = fig.add_subplot(111)
 
 plot_as_SE2(ax, agent.state, color="green") #plot initial state
 plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="pink")
+# plot_as_SE2(ax, agent.state@agent.targets[0].state, color="pink")
 
 agent_pos = np.empty((2, n_steps*n_times + 1))
 #sim

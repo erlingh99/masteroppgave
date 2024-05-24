@@ -13,7 +13,7 @@ from plot_utils import *
 np.random.seed(1)
 
 n_steps = 300
-n_random = 1000 #number of simulations
+n_random = 10#1000 #number of simulations
 dt = 0.05 #sec per step, imu rate
 T = (n_steps-1)*dt #end time
 
@@ -102,6 +102,9 @@ for i in range(100, n_steps+1, 50):
     idx = min(i, n_steps-1)
     plot_as_SE2(ax, T_pred[idx], color="green")
 plot_as_SE2(ax, T_update, color="blue", z=z_gnss.pos)
+
+T_pred[-1].draw_significant_ellipses(ax)
+
 
 plot_2d_frame(ax, SE2(SO2(Rot(T).as_matrix()[:2, :2]), p(T)[:2]), scale=5)
 

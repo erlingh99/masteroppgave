@@ -10,7 +10,7 @@ from states import PlatformState, TargetState
 from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
 from plot_utils import *
 
-np.random.seed(42)
+# np.random.seed(42)
 
 #meta vars
 n_times = 10
@@ -38,7 +38,7 @@ vt = lambda t: np.array([30, -4*t, 0])
 IMU_cov = np.diag([0, 0, 0.2, 2, 2, 0])**2
 
 GNSS_cov = np.diag([5, 5, 0.001])**2
-radar_cov = np.diag([5, 5, 0.001])**2
+radar_cov = np.diag([15, 15, 0.001])**2
 
 init_agent_cov = np.diag([0, 0, 0.1, 0, 0, 0, 2, 2, 0])**2
 init_agent_gt = SE3_2(Rot(0), v(0), p(0))
@@ -52,7 +52,7 @@ init_target_cov = np.diag([3, 3, 0, 5, 5, 0])**2
 init_target_mean = multivariate_normal(np.array([*pt(0), *vt(0)]), init_target_cov)
 init_target_pose = TargetState(init_target_mean, init_target_cov)
 
-cv_velocity_variance = 5**2
+cv_velocity_variance = 2**2
 
 TARGET_ID = 0
 target = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
@@ -83,6 +83,7 @@ ax = fig.add_subplot(111)
 
 plot_as_SE2(ax, agent.state, color="green") #plot initial state
 plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
 
 agent_pos = np.empty((2, n_steps*n_times + 1))
 #sim
@@ -104,6 +105,7 @@ for n in tqdm(range(n_times)):
     #update target
     # plot_as_2d(ax, agent.targets[0].state, color="yellow")
     y_target = targetMeasurement(t)
+    # plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="orange")
     agent.target_update(TARGET_ID, y_target)
 
 
@@ -112,6 +114,7 @@ for n in tqdm(range(n_times)):
 
     plot_as_SE2(ax, agent.state, color="green")
     plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
+    plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
 
 
 
@@ -126,6 +129,7 @@ for n in tqdm(range(n_times)):
 
 plot_as_SE2(ax, agent.state, color="green") #plot the last ellipsis
 plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
 
 agent_pos[:, -1] = agent.state.pos[:2] #add final position
 ax.plot(agent_pos[0,:], agent_pos[1, :], "g--")
