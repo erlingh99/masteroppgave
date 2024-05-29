@@ -1,7 +1,7 @@
-from gaussian import MultiVarGauss
 import matplotlib.pyplot as plt
-import visgeom as vg
 import numpy as np
+
+from SE23.gaussian import MultiVarGauss
 
 mean = np.array([3*np.pi/4, 3, 3])
 Sigma = np.array([[0.4, 0, 0],

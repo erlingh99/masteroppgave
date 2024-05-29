@@ -1,10 +1,11 @@
-from gaussian import ExponentialGaussian
-from lie_theory import SE3_2
-from models import IMU_Model
-from measurements import IMU_Measurement
 import matplotlib.pyplot as plt
 import numpy as np
-from plot_utils import plot_3d_frame
+
+from SE23.gaussian import ExponentialGaussian
+from SE23.lie_theory import SE3_2
+from SE23.models import IMU_Model
+from SE23.measurements import IMU_Measurement
+from SE23.plot_utils import plot_3d_frame
 
 mean = SE3_2.Exp([0, 0, 0, 0, 0, 0, 0, 0, 0]).as_matrix()
 cov = np.diag([0, 0, 0.2, 0.3, 0, 0, 2, 6, 0])

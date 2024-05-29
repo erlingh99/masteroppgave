@@ -3,12 +3,12 @@ from numpy.random import multivariate_normal
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from agent import Agent
-from target import TargetWorld
-from lie_theory import SE3_2, SO3, SE2, SO2
-from states import PlatformState, TargetState
-from measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
-from plot_utils import *
+from SE23.agent import Agent
+from SE23.target import TargetWorld
+from SE23.lie_theory import SE3_2, SO3, SE2, SO2
+from SE23.states import PlatformState, TargetState
+from SE23.measurements import IMU_Measurement, TargetMeasurement, GNSS_Measurement
+from SE23.plot_utils import *
 
 np.random.seed(42)
 
@@ -34,7 +34,7 @@ vt = lambda t: np.array([30, -4*t, 0])
 
 
 #spawn agent
-IMU_cov = np.diag([0, 0, 0.8, 2, 2, 0])**2
+IMU_cov = np.diag([0, 0, 0.1, 2, 2, 0])**2
 
 GNSS_cov = np.diag([5, 5, 0.001])**2
 radar_cov = np.diag([5, 5, 0.001])**2
@@ -82,7 +82,7 @@ target_states[0] = init_target_pose
 
 #propegate platform without target
 for k in tqdm(range(1, n_steps)):
-    z_imu = generate_IMU_measurement(k*dt) #sample random inputs
+    z_imu = generate_IMU_measurement((k-1)*dt) #sample random inputs
 
     agent.propegate(z_imu, dt)
 

@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from lie_theory import SE3_2, SO3
-from models import IMU_Model
-from measurements import IMU_Measurement
+from SE23.lie_theory import SE3_2, SO3
+from SE23.models import IMU_Model
+from SE23.measurements import IMU_Measurement
 
 init = SE3_2.Exp(np.array([0, -0.3, 0.4 , 0 , 0 ,0, 0 ,0,0]))
 T0 = init.as_matrix()

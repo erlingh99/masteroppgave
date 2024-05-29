@@ -1,8 +1,9 @@
-from lie_theory import SE2
 import numpy as np
-from gaussian import ExponentialGaussian
 import matplotlib.pyplot as plt
-from plot_utils import plot_2d_frame
+
+from SE23.lie_theory import SE2
+from SE23.gaussian import ExponentialGaussian
+from SE23.plot_utils import plot_2d_frame
 
 
 # mean = SE2.Exp([np.pi/4, 5, 5])
