@@ -1,9 +1,10 @@
-from eskf import ESKF
-from models import ModelIMU
-from sensors import SensorGNSS
-from states import EskfState, NominalState, ErrorState, RotationQuaterion
-from senfuslib import MultiVarGauss
 import numpy as np
+
+from .eskf import ESKF
+from .models import ModelIMU
+from .sensors import SensorGNSS
+from .states import EskfState, NominalState, ErrorState, RotationQuaterion
+from .senfuslib import MultiVarGauss
 
 
 """Everything below here can be altered"""
@@ -14,7 +15,7 @@ imu_min_dt_sim = None  # IMU is sampled at 100 Hz, use to downsample
 gnss_min_dt_sim = None  # GPS is sampled at 1 Hz, use this to downsample
 
 imu_sim = ModelIMU(
-    accm_std=1.167e-3,   # Accelerometer standard deviation, TUNEABLE
+    accm_std=1.167e-3,   # Accelerometer standard deviation
     gyro_std=4.36e-5  # Gyro standard deviation
 )
 

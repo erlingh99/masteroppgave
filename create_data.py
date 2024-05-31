@@ -11,8 +11,9 @@ path = "./data/true_state.mat"
 
 arr = loadmat(path)
 
-gt = arr["x_true"]
 dt = 0.01
+N = 30_000
+gt = arr["x_true"][:, :N]
 
 ned_convert = np.diag([1, -1, -1])
 
@@ -20,7 +21,7 @@ pos = (ned_convert@gt[:3, :]).T
 vel = (ned_convert@gt[3:6, :]).T
 q = gt[6:, :]
 
-R = np.zeros((len(pos), 3, 3))
+R = np.zeros((N, 3, 3))
 omega = np.zeros_like(pos)
 acc = np.zeros_like(pos)
 pos_ca = np.zeros_like(pos)
@@ -31,7 +32,7 @@ pos_ca[0] = pos[0]
 vel_ca[0] = vel[0]
 R_ca[0] = R[0] = ned_convert@RotationQuaternion(q[0, 0], q[1:, 0]).as_rotation_matrix()@ned_convert.T
 
-for i in tqdm(range(1, len(R))):
+for i in tqdm(range(1, N)):
     R[i] = ned_convert@RotationQuaternion(q[0, i], q[1:, i]).as_rotation_matrix()@ned_convert.T
 
     omega[i-1] = SO3(R[i-1].T@R[i]).Log()/dt
@@ -51,9 +52,9 @@ np.save("./data/example_trajectory.npy", save_dict)
 
 ax = plt.axes(projection='3d', xlabel='north [m]', ylabel='west [m]', zlabel='up [m]')
 
-ax.plot(xs=pos[:30000, 0], ys=pos[:30000, 1], zs=pos[:30000, 2])
-ax.plot(xs=pos_ca[:30000, 0], ys=pos_ca[:30000, 1], zs=pos_ca[:30000, 2])
-for i in range(0, 30000, 1000):
+ax.plot(xs=pos[:N, 0], ys=pos[:N, 1], zs=pos[:N, 2])
+ax.plot(xs=pos_ca[:N, 0], ys=pos_ca[:N, 1], zs=pos_ca[:N, 2])
+for i in range(0, N, 1000):
     plot_3d_frame(ax, SE3(SO3(R[i]), pos[i, :]), scale=50)
     plot_3d_frame(ax, SE3(SO3(R_ca[i]), pos_ca[i, :]), scale=50)
 

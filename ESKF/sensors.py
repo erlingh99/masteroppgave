@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 import numpy as np
 
-from senfuslib import MultiVarGauss
-from states import NominalState, GnssMeasurement, EskfState
+from .senfuslib import MultiVarGauss
+from .states import NominalState, GnssMeasurement, EskfState
 
 
 @dataclass

@@ -176,10 +176,10 @@ class SO2xR2(LieGroup):
         return np.array([theta, *self.t])
     
     def compose(self, other: LieGroup):
-        return SO2xR2(self.R@other.R, other.t + self.t)
+        return SO2xR2(self.R@other.R, self.R@other.t + self.t)
     
     def inverse(self) -> LieGroup:
-        return SO2xR2(self.R.T, -self.t)
+        return SO2xR2(self.R.T, -(self.R.T@self.t))
     
     def action(self, x):
         return self.R@x + self.t.reshape(2,1)
@@ -652,10 +652,10 @@ class SO3xR3xR3(LieGroup):
         return self.R@x + self.p
     
     def compose(self, other: "LieGroup"):
-        return SO3xR3xR3(self.R@other.R, self.v+other.v, self.p+other.p)
+        return SO3xR3xR3(self.R@other.R, self.v + self.R@other.v, self.p + self.R@other.p)
 
     def inverse(self) -> "LieGroup":
-        return SO3xR3xR3(self.R.T, -self.v, -self.p)
+        return SO3xR3xR3(self.R.T, -(self.R.T@self.v), -(self.R.T@self.p))
 
     def adjoint(self):
         return np.block([[self.R.mat, np.zeros((3, 6))],
@@ -698,4 +698,65 @@ class SO3xR3xR3(LieGroup):
     @property
     def t(self):
         return self.p
+
+
+
+    
+@dataclass
+class SO3xR3(LieGroup):
+    R: SO3
+    p: np.ndarray[3]
+    ndim = 6
+    size = (4, 4)
+    
+    def action(self, x):
+        return self.R@x + self.p[:, None]
+    
+    def compose(self, other: "LieGroup"):
+        return SO3xR3(self.R@other.R, self.p + self.R@other.p)
+
+    def inverse(self) -> "LieGroup":
+        return SO3xR3(self.R.T, -(self.R.T@self.p))
+
+    def adjoint(self):
+        return np.block([[self.R.mat, np.zeros((3, 3))],
+                    [cross_matrix(self.p)@self.R.mat, self.R.mat]])
+
+    def Log(self) -> np.ndarray:
+        return np.concatenate([self.R.Log(), self.p])
+    
+    def copy(self):
+        return SO3xR3(self.R.copy(), self.p.copy())
+    
+    def as_matrix(self):
+        mat = np.eye(4)
+        mat[:3, :3] = self.R.as_matrix()
+        mat[:3, 3] = self.p
+        return mat
+    
+    @classmethod
+    def from_matrix(cls, T):
+        return cls(SO3.from_matrix(T[:3, :3]), T[:3, 3])
+
+    @classmethod
+    def Exp(cls, tau) -> "LieGroup":
+        return cls(SO3.Exp(tau[:3]), tau[3:])
+    
+    @staticmethod
+    def jac_right(tau):
+        j = np.eye(6)
+        j[:3, :3] = SO3.jac_right(tau[:3])
+        return j
+    
+    @staticmethod
+    def jac_right(tau):
+        j = np.eye(6)
+        j[:3, :3] = SO3.jac_left(tau[:3])
+        return j
+    
+    @property
+    def t(self):
+        return self.p
+    
+
 

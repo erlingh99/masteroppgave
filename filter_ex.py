@@ -10,10 +10,10 @@ from SE23.states import PlatformState
 from SE23.utils import find_mean, exp_cov
 from SE23.plot_utils import *
 
-np.random.seed(1)
+np.random.seed(42)
 
 n_steps = 300
-n_random = 1000 #number of simulations
+n_random = 10 #number of simulations
 dt = 0.05 #sec per step, imu rate
 T = (n_steps-1)*dt #end time
 
@@ -33,7 +33,8 @@ Rot = lambda t: SO3.Exp([0, 0, 0])
 
 
 ##Agent setup, noises
-IMU_noise = np.diag([0, 0, 0.03/dt, 0, 0, 0])**2 #imu noise, gyro, acc
+IMU_noise = np.diag([0, 0, 0.03/dt, 0, 0, 0])**2*0 #imu noise, gyro, acc
+# IMU_noise = np.diag([0, 0, 0, 0, 0, 0])**2 #imu noise, gyro, acc
 GNSS_noise = np.diag([10, 10, 0.001])**2
 radar_noise = 0 # not used in this example
 
@@ -42,7 +43,7 @@ T_sim = np.empty((n_steps, n_random, 5, 5))
 T_pred = np.empty(n_steps, dtype=PlatformState)
 T_pred_2 = np.empty(n_steps, dtype=PlatformState)
 
-init_cov = np.diag([0, 0, 0, 0, 0, 0, 0, 0, 0])**2
+init_cov = np.diag([0, 0, 0.03/dt, 0, 0, 0, 0, 0, 0])**2
 
 T0 = SE3_2(Rot(0), v(0), p(0)) #true start pos
 T0_2 = SO3xR3xR3(Rot(0), v(0), p(0)) #true start pos
@@ -73,13 +74,15 @@ gnssMeasurement = lambda t: GNSS_Measurement(pos_m(t)) #create gnss measurement 
 #propegate and simulate
 for k in tqdm(range(n_steps - 1)):
     z_imu = generate_IMU_measurements(k*dt, n_random) #sample n_random different inputs
-    z_true = z_imu[0]#IMU_Measurement(w(k*dt), Rot(k*dt).T@(a(k*dt) + g))
+    z_true = IMU_Measurement(w(k*dt), Rot(k*dt).T@(a(k*dt) + g))
     agent.propegate(z_true, dt) #use one of the random inputs in the full filter
     agent_2.propegate(z_true, dt) #use one of the random inputs in the full filter
     T_pred[k+1] = agent.state #save the current state of the agent
     T_pred_2[k+1] = agent_2.state #save the current state of the agent
     for i in range(n_random):
         T_sim[k+1, i] = agent.inertialNavigation.model.propegate_mean(T_sim[k, i], z_imu[i], dt) #propegate the simulations with the corresponding random input
+
+
 #update 
 z_gnss = gnssMeasurement(dt*n_steps)
 agent.platform_update(z_gnss)

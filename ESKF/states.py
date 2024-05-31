@@ -2,9 +2,9 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Optional
 
-from quaternion import RotationQuaterion
-from senfuslib import NamedArray, AtIndex, MetaData
-from senfuslib import MultiVarGauss
+from .quaternion import RotationQuaterion
+from .senfuslib import NamedArray, AtIndex, MetaData
+from .senfuslib import MultiVarGauss
 
 
 @dataclass

@@ -4,7 +4,8 @@ from typing import Any, Sequence, Tuple, TypeVar, Union
 import numpy as np
 from scipy.stats import chi2
 from dataclasses import dataclass, field
-from senfuslib import TimeSequence, MultiVarGauss, NamedArray
+
+from ..senfuslib import TimeSequence, MultiVarGauss, NamedArray
 
 S = TypeVar('S', bound=np.ndarray)  # State type
 M = TypeVar('M', bound=np.ndarray)  # Measurement type

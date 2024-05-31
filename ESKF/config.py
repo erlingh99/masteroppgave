@@ -10,4 +10,3 @@ fname_data_sim = data_dir.joinpath('task_simulation.mat')
 RUN = 'sim'
 DEBUG = False
 PLOT_MIN_DT = 0.1  # Minimum time between points in plot
-

@@ -1,6 +1,6 @@
 import numpy as np
 from .gaussian import ExponentialGaussian, MultiVarGauss
-from .lie_theory import SE3, SE2, SO2, SO2xR2
+from .lie_theory import SE3, SE2, SO2, SO2xR2, SO3xR3
 
 
 def plot_as_SE2(ax, pose: ExponentialGaussian, color: str ="red", z: np.ndarray = None, scale: int = 5, num_std: float = 3, n_points: int = 50):
@@ -16,6 +16,43 @@ def plot_as_SE2(ax, pose: ExponentialGaussian, color: str ="red", z: np.ndarray 
     ax.plot(m[0, 4], m[1, 4], color=color, marker="o")
     if z is not None:
         ax.plot(z[0], z[1], color=color, marker="x")
+
+
+def plot_as_SE3(ax, pose: ExponentialGaussian, color: str ="red", z: np.ndarray = None, scale: int = 5, num_std: float = 3, n_points: int = 50):
+    extract = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 1, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 1, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 1, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 1, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0, 1]])
+
+    c = extract@pose.cov@extract.T
+    pose3D = SE3(pose.mean.R, pose.mean.p)
+    exp = ExponentialGaussian(pose3D, c)
+    plot_3d_frame(ax, pose3D, scale=scale)
+    exp.draw_2Dtranslation_covariance_ellipse(ax, "xy", num_std=num_std, n_points=n_points, color=color)
+    ax.plot(*pose.mean.p, color=color, marker="o")
+    if z is not None:
+        ax.plot(z[0], z[1], color=color, marker="x")
+
+
+def plot_as_SO3xR3(ax, pose: ExponentialGaussian, color: str ="red", z: np.ndarray = None, scale: int = 5, num_std: float = 3, n_points: int = 50):
+    extract = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 1, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 1, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 1, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 1, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0, 1]])
+
+    c = extract@pose.cov@extract.T
+    pose3D = SO3xR3(pose.mean.R, pose.mean.p)
+    exp = ExponentialGaussian(pose3D, c)
+    plot_3d_frame(ax, pose3D, scale=scale)
+    exp.draw_2Dtranslation_covariance_ellipse(ax, "xy", num_std=num_std, n_points=n_points, color=color)
+    ax.plot(*pose.mean.p, color=color, marker="o")
+    if z is not None:
+        ax.plot(z[0], z[1], color=color, marker="x")
+
 
 def plot_as_SO2xR2(ax, pose: ExponentialGaussian, color: str ="red", z: np.ndarray = None, scale: int = 5, num_std: float = 3, n_points: int = 50):
     extract = np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0],

@@ -1,9 +1,8 @@
 import numpy as np
-
 from dataclasses import dataclass
 from scipy.spatial.transform import Rotation
 
-from senfuslib import NamedArray, AtIndex
+from .senfuslib import NamedArray, AtIndex
 
 
 
@@ -123,6 +122,21 @@ class RotationQuaterion(NamedArray):
             rquat (RotationQuaternion): the rotation quaternion
         """
         scipy_quat = Rotation.from_euler('xyz', euler).as_quat()
+        return RotationQuaterion(scipy_quat[3], scipy_quat[:3])
+    
+
+    @staticmethod
+    def from_matrix(rotmat: 'np.ndarray[3, 3]') -> 'RotationQuaterion':
+        """Get a rotation quaternion from euler angles
+        usage: rquat = RotationQuaterion.from_euler(euler)
+
+        Args:
+            rotmat (ndarray[3,3]): 3D rotation matrix
+
+        Returns:
+            rquat (RotationQuaternion): the rotation quaternion
+        """
+        scipy_quat = Rotation.from_matrix(rotmat).as_quat()
         return RotationQuaterion(scipy_quat[3], scipy_quat[:3])
 
     def _as_scipy_quat(self) -> 'np.ndarray[4]':

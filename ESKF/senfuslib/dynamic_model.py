@@ -1,12 +1,10 @@
+import numpy as np
 from typing import Any, Generic, Sequence, TypeVar
-import numpy as np
-from scipy.linalg import expm
-
 from dataclasses import dataclass
-
-import numpy as np
-from senfuslib import MultiVarGauss, NamedArray
+from scipy.linalg import expm
 from scipy.integrate import solve_ivp
+
+from ..senfuslib import MultiVarGauss, NamedArray
 
 S = TypeVar('S', bound=np.ndarray)  # State type
 

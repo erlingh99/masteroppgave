@@ -1,10 +1,10 @@
+import numpy as np
 import logging
 from typing import Any, Callable, Optional, Sequence, Union
 from matplotlib import pyplot as plt
-import numpy as np
+import matplotlib as mpl
 from . import TimeSequence, MultiVarGauss, ConsistencyAnalysis, ConsistencyData
 import itertools
-import matplotlib as mpl
 
 FactoryType = Callable[[float, Any, float, Any, str, str], tuple[tuple, dict]]
 t = np.linspace(0, np.pi*2, 100)

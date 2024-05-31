@@ -81,7 +81,7 @@ class MultiVarGauss:
 
 
     def __covar_helper__(self, num_std=3, resolution=20) -> np.ndarray:    
-        lambda_, eig_vals = np.linalg.eig(self.cov)
+        eig_vals, lambda_, _ = np.linalg.svd(self.cov)
         lambda_root = np.sqrt(lambda_)
         
         idx = np.argsort(-lambda_root)
@@ -97,11 +97,11 @@ class MultiVarGauss:
         """
         Draw ellipse based on the 3 more important directions of the covariance
         """
-        n_ellipsis = max(1, min(n_ellipsis, 3))
+        n_ellipsis = max(1, min(n_ellipsis, len(self.mean)-1, 3))
 
         idxs = [[0, 1], [0, 2], [1, 2]]
 
-        eig_vals, V = np.linalg.eig(self.cov)
+        V, eig_vals, _ = np.linalg.svd(self.cov)
         eig_root = np.sqrt(eig_vals)
         dirs = n_std*V@np.diag(eig_root)
         idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
@@ -117,9 +117,40 @@ class MultiVarGauss:
                 lines[i, :] = x + self.mean
 
             if self.mean.shape[0] == 3:
-                ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color)
+                ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color, alpha=0.4)
             else:
-                ax.plot(lines[:, 0], lines[:, 1], color=color)
+                ax.fill(lines[:, 0], lines[:, 1], color=color, alpha=0.2)
+
+
+    
+    def draw_significant_spheres(self, ax, n_spheres=4, n_std=3, n_points=50, color="rgbk"):
+        """
+        Draw spheres (3d) based on the 1 to 3 more important directions of the covariance
+        """
+        n_spheres = max(1, min(n_spheres, 4))
+
+        idxs = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+
+        V, eig_vals, _ = np.linalg.svd(self.cov)
+        eig_root = np.sqrt(eig_vals)
+        dirs = n_std*V@np.diag(eig_root)
+        idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
+
+        cart_coords = MultiVarGauss.__hyperspherical_coords__(ndim=3, resolution=n_points) #coordinates of identity sphere
+
+        lines = np.empty((len(cart_coords[0]), 3))
+
+        for n in range(n_spheres):
+            
+            xi = dirs[:, idx[idxs[n]]]@cart_coords
+
+            for i, x in enumerate(xi.T):
+                lines[i] = self.mean + x
+
+            # ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color[n])
+            ax.plot_surface(lines[:, 0].reshape(n_points+1, -1), lines[:, 1].reshape(n_points+1, -1), lines[:, 2].reshape(n_points+1, -1), alpha=0.4, color=color[n])
+    
+
 
 
     def __iter__(self):
@@ -214,24 +245,32 @@ class ExponentialGaussian(MultiVarGauss):
 
         idxs = [[0, 1], [0, 2], [1, 2]]
 
-        eig_vals, V = np.linalg.eig(self.cov)
+        # eig_vals, V = np.linalg.eig(self.cov)
+        V, eig_vals, _ = np.linalg.svd(self.cov)
+        
+
         eig_root = np.sqrt(eig_vals)
         dirs = n_std*V@np.diag(eig_root)
         idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
        
         coords = MultiVarGauss.__hyperspherical_coords__(2, n_points)
 
-        lines = np.empty((coords.shape[1], 2))
+
+        ndim = 3 if ax.name == "3d" else 2
+        lines = np.empty((coords.shape[1], ndim))
 
         for n in range(n_ellipsis):
             xi = dirs[:, idx[idxs[n]]]@coords
 
             for i, x in enumerate(xi.T):
                 Ttemp = self.mean@self.mean.__class__.Exp(x)
-                lines[i] = Ttemp.t[:2]
-        
-            ax.fill(lines[:, 0], lines[:, 1], color=color, alpha=0.2)
-            # ax.plot(lines[:, 0], lines[:, 1], color="green")
+                lines[i] = Ttemp.t[:ndim]
+
+            if ndim == 3:
+                ax.plot(*lines.T, color=color, alpha=0.4)
+            else:
+                ax.fill(*lines.T, color=color, alpha=0.2)
+
 
     def draw_significant_spheres(self, ax, n_spheres=4, n_std=3, n_points=50, color="rgbk"):
         """
@@ -241,7 +280,7 @@ class ExponentialGaussian(MultiVarGauss):
 
         idxs = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
 
-        eig_vals, V = np.linalg.eig(self.cov)
+        V, eig_vals, _ = np.linalg.svd(self.cov)
         eig_root = np.sqrt(eig_vals)
         dirs = n_std*V@np.diag(eig_root)
         idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating

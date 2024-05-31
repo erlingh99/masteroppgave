@@ -2,9 +2,9 @@ from dataclasses import dataclass
 import numpy as np
 from typing import Sequence, TypeVar, Generic
 
-from senfuslib import MultiVarGauss
 from .named_array import NamedArray
-from config import DEBUG
+from ..senfuslib import MultiVarGauss
+from ..config import DEBUG
 
 
 S = TypeVar('S', bound=np.ndarray)  # State type

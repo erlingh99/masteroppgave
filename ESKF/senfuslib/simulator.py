@@ -5,8 +5,9 @@ from zlib import crc32
 from pathlib import Path
 import pickle
 from typing import ClassVar, TypeVar
-from senfuslib import DynamicModel, SensorModel, MultiVarGauss, TimeSequence
 import logging
+
+from ..senfuslib import DynamicModel, SensorModel, MultiVarGauss, TimeSequence
 try:
     from config import sim_output_dir as out_dir
 except ImportError:

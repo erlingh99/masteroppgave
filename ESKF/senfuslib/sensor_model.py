@@ -1,7 +1,8 @@
 from dataclasses import dataclass, fields
 import numpy as np
-from senfuslib import MultiVarGauss, TimeSequence
 from typing import TypeVar, Generic
+
+from ..senfuslib import MultiVarGauss, TimeSequence
 
 M = TypeVar('M', bound=np.ndarray)  # Measurement type
 S = TypeVar('S', bound=np.ndarray)  # State type

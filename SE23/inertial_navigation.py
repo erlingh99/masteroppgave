@@ -14,7 +14,7 @@ class InertialNavigation:
     sensor: ManifoldGNSS_Sensor
 
     def propegate(self, current_state: PlatformState, z: IMU_Measurement, dt: float):
-        new_mean = self.model.propegate_mean(current_state.mean.as_matrix(), z, dt)
+        new_mean = self.model.propegate_mean(current_state.mean.as_matrix(), z, dt, cls=current_state.mean.__class__)
         new_mean = current_state.mean.__class__.from_matrix(new_mean)
         new_cov = self.model.propegate_cov(current_state.cov, z, dt, cls=current_state.mean.__class__)
         return PlatformState(new_mean, new_cov)

@@ -15,18 +15,19 @@ class IMU_Model:
     
     g = np.array([0, 0, -9.81])
     
-    def propegate_mean(self, mean: np.ndarray[5, 5], z: IMU_Measurement, dt: float, mode=1):
-        return self.gravityMatrix(dt)@self.positionChange(mean, dt)@self.incrementMatrix(z, dt, mode=mode)
+    def propegate_mean(self, mean: np.ndarray[5, 5], z: IMU_Measurement, dt: float, mode=1, cls=SE3_2):
+        return self.gravityMatrix(dt)@self.positionChange(mean, dt)@self.incrementMatrix(z, dt, mode=mode, cls=cls)
 
 
     def propegate_cov(self, cov: np.ndarray[9, 9], z: IMU_Measurement, dt: float, cls=SE3_2):
-        inc = self.incrementMatrix(z, dt, mode=1)
+        inc = self.incrementMatrix(z, dt, mode=1, cls=cls)
         Ai = self.__A__(inc, dt, cls=cls)
         Qi = self.__Q__(z, dt, mode=2, cls=cls)
 
         cov_tmp = Ai@cov@Ai.T
         cov_2nd = cov_tmp + Qi
         cov_4th = cov_2nd + self.__fourth_order__(cov_tmp, Qi)
+        # return cov_2nd
         return cov_4th#, cov_2nd
 
 
@@ -43,28 +44,30 @@ class IMU_Model:
         Phi[:3, 4] += Phi[:3, 3]*dt
         return Phi
     
-    def incrementMatrix(self, measurement: IMU_Measurement, dt, mode=1):
+    def incrementMatrix(self, measurement: IMU_Measurement, dt, mode=1, cls=SE3_2):
         """Compute Upsilon (IMU)"""
-        # g = measurement.gyro
-        # a = measurement.acc
-        # return SE3_2.Exp(np.concatenate([dt*g, dt*a, self.__C__(g*dt)@a*0.5*dt*dt])).as_matrix()
-        deltaR = SO3.Exp(dt*measurement.gyro).as_matrix()
-        upsilon = np.eye(5)
-        upsilon[:3, :3] = deltaR
-        upsilon[:3, 3] = measurement.acc*dt
-        upsilon[:3, 4] = 1/2*(dt**2)*measurement.acc
+        g = measurement.gyro
+        a = measurement.acc
+        return cls.Exp(np.concatenate([dt*g, dt*a, 0.5*dt*dt*a])).as_matrix()
+        # return cls.Exp(np.concatenate([dt*g, dt*a, self.__C__(g*dt)@a*0.5*dt*dt])).as_matrix()
+    
+        # deltaR = SO3.Exp(dt*measurement.gyro).as_matrix()
+        # upsilon = np.eye(5)
+        # upsilon[:3, :3] = deltaR
+        # upsilon[:3, 3] = measurement.acc*dt
+        # upsilon[:3, 4] = 1/2*(dt**2)*measurement.acc
         
-        if mode == 1:
-            Jl = SO3.jac_left(dt*measurement.gyro)
-            Hl = Jl@self.__C__(measurement.gyro*dt)
-            upsilon[:3, 3] = Jl@upsilon[:3, 3]
-            upsilon[:3, 4] = Hl@upsilon[:3, 4]
-        elif mode == 2:
-            Jl = SO3.jac_left(dt*measurement.gyro)
-            upsilon[:3, 3] = Jl@upsilon[:3, 3]
-            upsilon[:3, 4] = Jl@upsilon[:3, 4] #np.zeros(3)
+        # if mode == 1:
+        #     Jl = SO3.jac_left(dt*measurement.gyro)
+        #     Hl = Jl@self.__C__(measurement.gyro*dt)
+        #     upsilon[:3, 3] = Jl@upsilon[:3, 3]
+        #     upsilon[:3, 4] = Hl@upsilon[:3, 4]
+        # elif mode == 2:
+        #     Jl = SO3.jac_left(dt*measurement.gyro)
+        #     upsilon[:3, 3] = Jl@upsilon[:3, 3]
+        #     upsilon[:3, 4] = Jl@upsilon[:3, 4] #np.zeros(3)
 
-        return upsilon
+        # return upsilon
 
 
     def __F__(self, dt):

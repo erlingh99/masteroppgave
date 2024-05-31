@@ -2,10 +2,11 @@ from dataclasses import dataclass, field
 from typing import Tuple
 import numpy as np
 import scipy.linalg
-from senfuslib import MultiVarGauss
-from states import ErrorState, ImuMeasurement, CorrectedImuMeasurement, NominalState, GnssMeasurement, EskfState
-from quaternion import RotationQuaterion
-from utils.cross_matrix import get_cross_matrix
+
+from .senfuslib import MultiVarGauss
+from .states import ErrorState, ImuMeasurement, NominalState, GnssMeasurement, EskfState
+from .quaternion import RotationQuaterion
+from .utils.cross_matrix import get_cross_matrix
 
 
 @dataclass
@@ -16,44 +17,23 @@ class ModelIMU:
 
     accm_std: float
     gyro_std: float
-    g: 'np.ndarray[3]' = field(default=np.array([0, 0, 9.82]))
+    g: 'np.ndarray[3]' = field(default=np.array([0, 0, -9.81]))
     Q_c: 'np.ndarray[12, 12]' = field(init=False, repr=False)
 
 
     def __post_init__(self):
-        def diag3(x): return np.diag([x]*3)
+        if type(self.accm_std) == float:
+            self.accm_std = [self.accm_std]*3
 
+        if type(self.gyro_std) == float:
+            self.gyro_std = [self.gyro_std]*3
 
-        self.Q_c = scipy.linalg.block_diag(
-            diag3(self.accm_std**2),
-            diag3(self.gyro_std**2)
-        )
+        self.Q_c = np.diag([*self.accm_std, *self.gyro_std])**2
 
-    def correct_z_imu(self,
-                      x_est_nom: NominalState,
-                      z_imu: ImuMeasurement,
-                      ) -> CorrectedImuMeasurement:
-        """Correct IMU measurement so it gives a measurmenet of acceleration 
-        and angular velocity in body.
-
-        Hint: self.accm_correction and self.gyro_correction translates 
-        measurements from IMU frame (probably not correct name) to body frame
-
-        Args:
-            x_est_nom: previous nominal state
-            z_imu: raw IMU measurement
-
-        Returns:
-            z_corr: corrected IMU measurement
-        """
-        acc_est = z_imu.acc
-        avel_est = z_imu.avel
-        
-        return CorrectedImuMeasurement(acc_est, avel_est)
 
     def predict_nom(self,
                     x_est_nom: NominalState,
-                    z_corr: CorrectedImuMeasurement,
+                    z_corr: ImuMeasurement,
                     dt: float) -> NominalState:
         """Predict the nominal state, given a corrected IMU measurement and a 
         time step, by discretizing (10.58) in the book.
@@ -82,7 +62,7 @@ class ModelIMU:
 
     def A_c(self,
             x_est_nom: NominalState,
-            z_corr: CorrectedImuMeasurement,
+            z_corr: ImuMeasurement,
             ) -> 'np.ndarray[15, 15]':
         """Get the transition matrix, A, in (10.68)
 
@@ -132,7 +112,7 @@ class ModelIMU:
 
     def get_discrete_error_diff(self,
                                 x_est_nom: NominalState,
-                                z_corr: CorrectedImuMeasurement,
+                                z_corr: ImuMeasurement,
                                 dt: float
                                 ) -> Tuple['np.ndarray[15, 15]',
                                            'np.ndarray[15, 15]']:
@@ -167,7 +147,7 @@ class ModelIMU:
 
     def predict_err(self,
                     x_est_prev: EskfState,
-                    z_corr: CorrectedImuMeasurement,
+                    z_corr: ImuMeasurement,
                     dt: float,
                     ) -> MultiVarGauss[ErrorState]:
         """Predict the error state

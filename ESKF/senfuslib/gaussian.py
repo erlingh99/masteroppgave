@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
 import numpy as np
-from config import DEBUG
 from functools import cached_property
 from typing import Generic, TypeVar
 import scipy.stats
-T = TypeVar('T', bound=np.ndarray)
 
+from ..config import DEBUG
+
+T = TypeVar('T', bound=np.ndarray)
 
 @dataclass
 class MultiVarGauss(Generic[T]):
@@ -95,4 +96,4 @@ class MultiVarGauss(Generic[T]):
         return out
 
     def __str__(self) -> str:
-        return str(self)
+        return self.__repr__()

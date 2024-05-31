@@ -2,13 +2,13 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Tuple
 
-from senfuslib import MultiVarGauss
-from states import ImuMeasurement, GnssMeasurement, EskfState
-from states import NominalState, ErrorState
-from quaternion import RotationQuaterion
-from utils.cross_matrix import get_cross_matrix
-from sensors import SensorGNSS
-from models import ModelIMU
+from .senfuslib import MultiVarGauss
+from .states import ImuMeasurement, GnssMeasurement, EskfState
+from .states import NominalState, ErrorState
+from .quaternion import RotationQuaterion
+from .utils.cross_matrix import get_cross_matrix
+from .sensors import SensorGNSS
+from .models import ModelIMU
 
 
 @dataclass
@@ -34,10 +34,9 @@ class ESKF():
             return x_est_prev
 
         x_est_prev_nom = x_est_prev.nom
-        z_corr = self.model.correct_z_imu(x_est_prev_nom, z_imu)
 
-        x_est_pred_nom = self.model.predict_nom(x_est_prev_nom, z_corr, dt)
-        x_est_pred_err = self.model.predict_err(x_est_prev, z_corr, dt)
+        x_est_pred_nom = self.model.predict_nom(x_est_prev_nom, z_imu, dt)
+        x_est_pred_err = self.model.predict_err(x_est_prev, z_imu, dt)
 
         return EskfState(x_est_pred_nom, x_est_pred_err)        
 
