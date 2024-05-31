@@ -75,7 +75,8 @@ agent2 = Agent(IMU_noise, None, None, init_state2)
 
 imu_sim = ModelIMU(
     accm_std=acc_noise*np.sqrt(dt),   # Accelerometer standard deviation
-    gyro_std=gyro_noise*np.sqrt(dt)   # Gyro standard deviation
+    gyro_std=gyro_noise*np.sqrt(dt),   # Gyro standard deviation
+    g=np.array([0, 0, -9.81])
 )
 
 x_est_init_nom_sim = NominalState(

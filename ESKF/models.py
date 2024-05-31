@@ -17,7 +17,7 @@ class ModelIMU:
 
     accm_std: float
     gyro_std: float
-    g: 'np.ndarray[3]' = field(default=np.array([0, 0, -9.81]))
+    g: 'np.ndarray[3]' = field(default=np.array([0, 0, 9.81]))
     Q_c: 'np.ndarray[12, 12]' = field(init=False, repr=False)
 
 

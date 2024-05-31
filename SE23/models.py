@@ -90,31 +90,31 @@ class IMU_Model:
         gyro = measurement.gyro
         acc = measurement.acc
 
-        if mode == 0:
-            G = np.zeros((9, 6))
+        # if mode == 0:
+        #     G = np.zeros((9, 6))
 
-            G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
-            G[3:6, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt
-            G[6:9, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt**2/2
-            return G@self.noise@G.T
-        elif mode == 1:
-            G = np.zeros((9, 6))
+        #     G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
+        #     G[3:6, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt
+        #     G[6:9, 3:] = -SO3.Exp(-gyro*dt).as_matrix()*dt**2/2
+        #     return G@self.noise@G.T
+        # elif mode == 1:
+        #     G = np.zeros((9, 6))
 
-            G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
-            G[3:6, 3:] = G[:3, :3]
-            G[6:9, 3:] = G[:3, :3]*dt/2
-            return G@self.noise@G.T
+        #     G[:3, :3] = -SO3.jac_right(gyro*dt)*dt
+        #     G[3:6, 3:] = G[:3, :3]
+        #     G[6:9, 3:] = G[:3, :3]*dt/2
+        #     return G@self.noise@G.T
     
 
-        correction_mat = self.__C__(gyro*dt)
+        # correction_mat = self.__C__(gyro*dt)
 
-        tangent_increments = np.concatenate([gyro*dt, acc*dt, correction_mat@acc*dt*dt*0.5])
+        tangent_increments = np.concatenate([gyro*dt, acc*dt, acc*dt*dt*0.5])
         Jr = cls.jac_right(tangent_increments)
 
         temp = np.zeros((9, 6)) #right part of last step leading to eq 46
         temp[:3, :3] = dt*np.eye(3)
         temp[3:6, 3:] = dt*np.eye(3)
-        temp[6:, 3:] = 0.5*dt*dt*correction_mat
+        temp[6:, 3:] = 0.5*dt*dt*np.eye(3)
         G = Jr@temp
 
         return G@self.noise@G.T

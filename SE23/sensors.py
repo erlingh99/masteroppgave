@@ -56,7 +56,7 @@ class RelativePositionSensor(NonLinearMeasurementModel):
     def H(self, stacked_state: StackedState):
         _, platform_state_mean = stacked_state.mean
         R = platform_state_mean.R.as_matrix()
-        return R.T@np.block([np.eye(3), np.zeros((3,3))])
+        return np.block([R.T, np.zeros((3,3))])
     
     def innovation_covariance(self, state: StackedState, H):
         P, Sigma = state.cov 

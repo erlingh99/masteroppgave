@@ -685,15 +685,16 @@ class SO3xR3xR3(LieGroup):
     
     @staticmethod
     def jac_right(tau):
+        Rt = SO3.Exp(tau[:3]).as_matrix().T
         j = np.eye(9)
         j[:3, :3] = SO3.jac_right(tau[:3])
+        j[3:6, 3:6] = Rt
+        j[6:, 6:] = Rt
         return j
     
     @staticmethod
-    def jac_right(tau):
-        j = np.eye(9)
-        j[:3, :3] = SO3.jac_left(tau[:3])
-        return j
+    def jac_left(tau):
+        return SO3xR3xR3.jac_right(-tau)
     
     @property
     def t(self):
@@ -749,7 +750,7 @@ class SO3xR3(LieGroup):
         return j
     
     @staticmethod
-    def jac_right(tau):
+    def jac_left(tau):
         j = np.eye(6)
         j[:3, :3] = SO3.jac_left(tau[:3])
         return j
