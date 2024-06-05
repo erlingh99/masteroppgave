@@ -13,7 +13,7 @@ from SE23.plot_utils import *
 np.random.seed(42)
 
 n_steps = 300
-n_random = 10 #number of simulations
+n_random = 100 #number of simulations
 dt = 0.05 #sec per step, imu rate
 T = (n_steps-1)*dt #end time
 
@@ -33,8 +33,8 @@ Rot = lambda t: SO3.Exp([0, 0, 0])
 
 
 ##Agent setup, noises
-IMU_noise = np.diag([0, 0, 0.03/dt, 0, 0, 0])**2*0 #imu noise, gyro, acc
-# IMU_noise = np.diag([0, 0, 0, 0, 0, 0])**2 #imu noise, gyro, acc
+IMU_noise = np.diag([0, 0, 0.03/dt, 0.3, 0.3, 0])**2 #imu noise, gyro, acc
+# IMU_noise = np.diag([0, 0, 0, 0.5, 0.5, 0])**2 #imu noise, gyro, acc
 GNSS_noise = np.diag([10, 10, 0.001])**2
 radar_noise = 0 # not used in this example
 
@@ -43,7 +43,7 @@ T_sim = np.empty((n_steps, n_random, 5, 5))
 T_pred = np.empty(n_steps, dtype=PlatformState)
 T_pred_2 = np.empty(n_steps, dtype=PlatformState)
 
-init_cov = np.diag([0, 0, 0.03/dt, 0, 0, 0, 0, 0, 0])**2
+init_cov = np.diag([0, 0, 0, 0, 0, 0, 0, 0, 0])**2
 
 T0 = SE3_2(Rot(0), v(0), p(0)) #true start pos
 T0_2 = SO3xR3xR3(Rot(0), v(0), p(0)) #true start pos

@@ -124,9 +124,8 @@ class PlotterESKF:
             fields = [Mystring(f'{thing}.{n}') for n in 'xyz']
             for i, f in enumerate(fields):
                 if thing == 'pos':
-                    pass
-                    # scatter_field(ax[i], self.z_gnss, f, label=f'gps',
-                    #               marker='o', s=7, c='C6', alpha=0.5)
+                    scatter_field(ax[i], self.z_gnss, f, label=f'gps',
+                                  marker='o', s=7, c='C6', alpha=0.5)
                 if gt is not None:
                     plot_field(ax[i], gt, f, **gt_kwr())
                 plot_field(ax[i], est, f, **est_kwr())
@@ -141,9 +140,9 @@ class PlotterESKF:
             fields_nis = con_fields if thing == 'pos' else []
             fields_nees = con_fields if gt is not None else []
             fields_err = con_fields[1:] if gt is not None else []
-            # show_consistency(self.consistency, fields_nis,
-            #                  fields_nees, fields_err,
-            #                  title=title)
+            show_consistency(self.consistency, fields_nis,
+                             fields_nees, fields_err,
+                             title=title)
 
     def plot3d(self, gt, est, gt_kwr, est_kwr):
         fig = plt.figure()

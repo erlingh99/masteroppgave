@@ -13,47 +13,82 @@ def from_cross_matrix(mat: np.ndarray[3, 3]) -> np.ndarray[3]:
 
 def exp_NEES(pose, gt_mean):
     m, c = pose.mean, pose.cov
-    if np.linalg.det(c) == 0:
-        print("singular covariance, NEES not possible")
-        return 0
     err = (m.inverse()@gt_mean).Log()
-    return err.T@np.linalg.solve(c, err)
+    if np.linalg.norm(err) < 1e-5:
+        return 0, 0, 0, 0
+    
+    if np.linalg.det(c) == 0:
+        raise Exception("singular covariance, NEES not possible")
+    
+    nees = err.T@np.linalg.solve(c, err)
+    nees_ori = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
+    nees_vel = err[3:6].T@np.linalg.solve(c[3:6, 3:6], err[3:6])
+    nees_pos = err[6:].T@np.linalg.solve(c[6:, 6:], err[6:])
+    
+    if nees < 0:
+        raise ValueError("NEES cant be negative")
+    return (nees, nees_ori, nees_vel, nees_pos)
 
 def NEES(pose, gt_mean):
     m, c = pose.mean, pose.cov
-    if np.linalg.det(c) == 0:
-        print("singular covariance, NEES not possible")
-        return 0
     err = gt_mean-m
-    return err.T@np.linalg.solve(c, err)
+    if np.linalg.norm(err) < 1e-8:
+        return 0, 0, 0
+    
+    if np.linalg.det(c) == 0:
+        raise Exception("singular covariance, NEES not possible")
+    
+    nees = err.T@np.linalg.solve(c, err)
+    nees_pos = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
+    nees_vel = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
+
+    if nees < 0:
+        raise ValueError("NEES cant be negative")
+    return nees, nees_pos, nees_vel
 
     
-def exp_cov(poses, mean):
+def exp_cov(poses, mean, weights=None):
     N = len(poses)
-    fact = 1.0 / (N - 1)
 
     m = np.empty((poses[0].ndim, N))
+    minv = mean.inverse()
     for i, p in enumerate(poses):
-        m[:, i] = (mean.inverse()@p).Log()
-    return fact * m@m.T
+        m[:, i] = (minv@p).Log()
+
+    # Determine the normalization
+    if weights is None:
+        fact = N - 1
+        mT = m.T
+    else:
+        w_sum = sum(weights)
+        fact = w_sum - weights.T@weights/w_sum
+        mT = (m*weights).T
+    return m@mT/fact
 
 
-def find_mean(poses, init_guess, n_iter=100, eps=1e-5):
+def find_mean(poses, init_guess, n_iter=100, eps=1e-5, weights=None):
     """
     Find the mean of a set of poses using iterating average on tangent plane
     """
     N = poses.shape[0]
     curr_mean = init_guess.copy()
     n = curr_mean.ndim
+
+    if weights is None:
+        weights = np.full(N, 1/N)
+
+    if sum(weights) != 1:
+        weights = weights/sum(weights)
+
     for _ in range(n_iter):
         inv = curr_mean.inverse()
-        s = np.empty((n, ))
+        avg_chg = np.zeros((n, ))
         for i in range(N):
-            s += (inv@poses[i]).Log()
-        avg_chg = s/N
+            avg_chg += (inv@poses[i]).Log()*weights[i]
+
         curr_mean = curr_mean@init_guess.__class__.Exp(avg_chg)
         if np.linalg.norm(avg_chg) < eps:
-            return curr_mean
+            break
     return curr_mean
 
 

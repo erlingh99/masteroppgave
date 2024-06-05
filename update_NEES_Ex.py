@@ -2,7 +2,7 @@ import numpy as np
 from numpy.random import multivariate_normal
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from scipy.stats import chi2
+from scipy.stats import chi2, norm
 
 from SE23.agent import Agent
 from SE23.measurements import IMU_Measurement, GNSS_Measurement
@@ -15,7 +15,7 @@ from SE23.plot_utils import *
 alpha = 0.05
 
 
-n_steps = 300
+n_steps = 100
 n_random = 100 #number of simulations
 dt = 0.05 #sec per step, imu rate
 T = (n_steps-1)*dt #end time
@@ -72,8 +72,12 @@ gyro = lambda t, n: multivariate_normal(w(t), IMU_noise[:3, :3], size=n) #genera
 acc = lambda t, n: multivariate_normal(Rot(t).T@(a(t) + g), IMU_noise[3:, 3:], size=n) #imu measures g up, acc is in body
 generate_IMU_measurements = lambda t, n: [IMU_Measurement(g_t, acc_t) for g_t, acc_t in zip(gyro(t, n), acc(t, n))] #generate n IMU measurments at time t
 #GNSS measurements
-pos_m = lambda t, n: multivariate_normal(p(t), GNSS_noise, size=n) #measured position
-gnssMeasurement = lambda t, n: [GNSS_Measurement(zgnss) for zgnss in pos_m(t, n)] #create gnss measurement with noise
+pos_m = lambda t: multivariate_normal(p(t), GNSS_noise) #measured position
+gnssMeasurement = lambda t: GNSS_Measurement(pos_m(t)) #create gnss measurement with noise
+
+ws = np.empty(n_random)
+updated_agent_state = np.empty(n_random, dtype=PlatformState)
+updated_agent_state_ESKF = np.empty(n_random, dtype=PlatformState)
 
 #propegate and simulate
 for k in tqdm(range(1, n_steps)):
@@ -85,28 +89,33 @@ for k in tqdm(range(1, n_steps)):
         agent_state[k,i] = agents[i].state.copy()
         agent_state_ESKF[k,i] = agents_ESKF[i].state.copy()
 
-    if (k+1)%1000 == 0:
-        z_gps = gnssMeasurement(k*dt, n_random)
+    if (k+1)%100 == 0:
+        z_gps = gnssMeasurement(k*dt)
         for i in range(n_random):
-            agents[i].platform_update(z_gps[i])
-            agents_ESKF[i].platform_update(z_gps[i])
-            agent_state[k,i] = agents[i].state.copy()
-            agent_state_ESKF[k,i] = agents_ESKF[i].state.copy()
+            #prob agent i
+            m = z_gps.pos - agents[i].state.pos
+            ws[i] = np.exp(-0.5*m.T@np.linalg.solve(GNSS_noise, m))
+
+            agents[i].platform_update(z_gps)
+            agents_ESKF[i].platform_update(z_gps)
+            updated_agent_state[i] = agents[i].state.copy()
+            updated_agent_state_ESKF[i] = agents_ESKF[i].state.copy()
+
 
 
 # calculate SE3_2 distribution of simulated samples
 final_means = np.array([s.mean for s in agent_state[-1, :]])
 
 #calculate the eperical mean
-mean = find_mean(final_means, agents[-1].state.mean) #find mean, with the predicted mean of one of the agents as initial guess
-sim_cov = exp_cov(final_means, mean)
+mean = find_mean(final_means, agents[-1].state.mean, weights=ws) #find mean, with the predicted mean of one of the agents as initial guess
+sim_cov = exp_cov(final_means, mean, weights=ws)
 sim_pose = PlatformState(mean, sim_cov)
 
 # calculate SO3xR3xR3 distribution of simulated samples
 final_means_ESKF = np.array([s.mean for s in agent_state_ESKF[-1, :]])
 #calculate the eperical mean
-mean_ESKF = find_mean(final_means_ESKF, agents_ESKF[-1].state.mean) #find mean, with the predicted mean of one of the agents as initial guess
-sim_cov_ESKF = exp_cov(final_means_ESKF, mean_ESKF)
+mean_ESKF = find_mean(final_means_ESKF, agents_ESKF[-1].state.mean, weights=ws) #find mean, with the predicted mean of one of the agents as initial guess
+sim_cov_ESKF = exp_cov(final_means_ESKF, mean_ESKF, weights=ws)
 sim_pose_ESKF = PlatformState(mean_ESKF, sim_cov_ESKF)
 
 
@@ -116,16 +125,17 @@ ax = fig.add_subplot(111)
 
 
 plot_as_SE2(ax, sim_pose, color="yellow")
-plot_as_SO2xR2(ax, sim_pose_ESKF, color="orange")
+# plot_as_SO2xR2(ax, sim_pose_ESKF, color="orange")
 for i in range(n_random):
     t = np.empty((n_steps, 2))
     for k in range(n_steps):
         t[k, :] = agent_state[k, i].mean.t[:2]
     ax.plot(*t.T, color='gray', alpha=0.1)
     ax.scatter(*final_means[i].p[:2] , s=2, color='black')
+ax.plot(*z_gps.pos[:2], 'bx')
 
-plot_as_SE2(ax, agent_state[-1, 0], color="red")
-plot_as_SO2xR2(ax, agent_state_ESKF[-1, 0], color="pink")
+plot_as_SE2(ax, updated_agent_state[0], color="red")
+# plot_as_SO2xR2(ax, updated_agent_state_ESKF[0], color="pink")
 plot_2d_frame(ax, SE2(SO2(Rot(T).as_matrix()[:2, :2]), p(T)[:2]), scale=5)
 
 

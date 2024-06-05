@@ -16,10 +16,11 @@ class Agent:
     This runs the simplest possible tracker
     """
     state: PlatformState
-    targets: List[Target] = []
+    targets: List[Target]
 
     def __init__(self, IMU_cov: np.ndarray[6, 6], GNSS_sensor_cov: np.ndarray[3, 3], target_sensor_cov: np.ndarray[3, 3], init_state: PlatformState):
         self.state = init_state
+        self.targets = []
 
         self.target_measurement_sensor = RelativePositionSensor(target_sensor_cov)
 
@@ -29,9 +30,8 @@ class Agent:
 
 
     def propegate(self, imu_measurement: IMU_Measurement, dt: float):
-        prev_state = self.state
+        prev_state = self.state.copy()
         self.platform_propegate(imu_measurement, dt)
-
         self.targets_propegate(dt, prev_state, self.state, imu_measurement)
 
     def platform_propegate(self, imu_measurement: IMU_Measurement, dt: float):
@@ -47,7 +47,8 @@ class Agent:
     def target_update(self, target_id: int, target_measurement: TargetMeasurement):
         for target in self.targets:
             if target.id == target_id:
-                return target.update(self.state, target_measurement, self.target_measurement_sensor)
+                target.update(self.state, target_measurement, self.target_measurement_sensor)
+                return
         
     def add_target(self, target: Target):
         self.targets.append(target)

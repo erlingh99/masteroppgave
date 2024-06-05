@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from .states import TargetState, PlatformState
-from .lie_theory import SE3_2, SO3
+from .lie_theory import SE3_2, SO3, SO3xR3xR3, LieGroup
 from .utils import cross_matrix, op1, op2
 from .measurements import IMU_Measurement
 
@@ -198,6 +198,7 @@ class CV_world:
 @dataclass
 class CV_body:
     var_acc: float
+    cls: LieGroup = SE3_2
 
     def propegate(self, state: TargetState, platform_state_k: PlatformState, platform_state_kp1: PlatformState, z: IMU_Measurement, imu: IMU_Model, dt: float):
 
@@ -228,7 +229,7 @@ class CV_body:
     
         Fcv = self.Fcv(dt)
         Fdt = imu.__F__(dt)
-        Ad_inc_inv = SE3_2.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
+        Ad_inc_inv = self.cls.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
 
         J1 = J_xb_Tinv@J_Tinv_T@Ad_inc_inv@Fdt + J_xb_xw@Fcv@J_xw_T
         J2 = J_xb_Tinv@J_Tinv_T
@@ -252,6 +253,7 @@ class CV_body:
 @dataclass
 class CV_body2:
     var_acc: float
+    cls: LieGroup = SE3_2
 
     def propegate(self, state: PlatformState, platform_state_k: PlatformState, platform_state_kp1: PlatformState, z: IMU_Measurement, imu: IMU_Model, dt: float):
 
@@ -261,7 +263,7 @@ class CV_body2:
         ad1 = self.f(state.mean, dt).inverse().adjoint()
         ad2 = self.f(platform_state_k.mean@state.mean, dt).inverse().adjoint()
         ad3 = platform_state_kp1.mean.adjoint()
-        ad4 = SE3_2.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
+        ad4 = self.cls.from_matrix(imu.incrementMatrix(z, dt)).inverse().adjoint()
 
         J1 = (ad1 - ad2@ad3@ad4)@F
         J2 = ad2@ad3
@@ -272,14 +274,13 @@ class CV_body2:
 
         mean = platform_state_kp1.mean.inverse()@self.f(platform_state_k.mean@state.mean, dt)     
         
-        #
-        ad = SE3_2(mean.R, np.zeros((3)), np.zeros((3))).adjoint()
+        #change error to be local to platform not rot state of target and purge rot state of target
+        ad = self.cls(mean.R, np.zeros((3)), np.zeros((3))).adjoint()
         cov = ad@cov@ad.T
         mean.R = SO3(np.eye(3))
-
         return PlatformState(mean, cov)
 
-    def f(self, T: SE3_2, dt):
+    def f(self, T, dt):
         T = T.copy()
         T.p = T.p + dt*T.v
         return T

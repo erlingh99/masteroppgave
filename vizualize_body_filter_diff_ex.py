@@ -46,7 +46,7 @@ target_body_world = MultiVarGauss(T_state.mean.action2(target_body.mean), R2@tar
 
 target_world2 = MultiVarGauss(target_body_world.mean[:2], target_body_world.cov[:2, :2] + T_ish.cov)
 
-_, axs = plt.subplots(1,2)
+_, axs = plt.subplots(1,2, sharey=True)
 plot_as_SE2(axs[0], T_state, scale=1)
 plot_as_2d(axs[0], T_ish)
 plot_as_2d(axs[0], target_body_world, color="orange")
@@ -57,5 +57,7 @@ plot_as_2d(axs[1], target_world2, color="blue")
 plot_as_SE2(axs[1], target_world_se, scale=1)
 plot_2d_frame(axs[1], SE2.Exp([0, 0, 0]))
 for a in axs:
-    a.axis("equal")
+    a.set_xlim(-8, 2)
+    # a.set_ylim(-0.5, 16)
+    # a.axis("equal")
 plt.show()

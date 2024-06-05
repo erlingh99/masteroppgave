@@ -26,6 +26,9 @@ class PlatformState(ExponentialGaussian):
     @property
     def pos(self):
         return self.mean.p
+
+    def copy(self):
+        return PlatformState(self.mean.copy(), self.cov.copy())
     
 
 @dataclass

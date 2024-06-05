@@ -22,13 +22,14 @@ class InertialNavigation:
     
     ### Kalman update
     def update(self, pose: PlatformState, z: GNSS_Measurement):
-        zhat, S, H = self.sensor.predict_measurement(pose)
+        zhat, S, H, R = self.sensor.predict_measurement(pose)
         innov = z.pos - zhat #innovation is z in world for GNSS
         K = pose.cov@np.linalg.solve(S.T, H).T #equiv to pose.cov@H.T@inv(S) #compute kalman gain
         err_hat = K@innov
         new_mean = pose.mean@pose.mean.__class__.Exp(err_hat) #inject
         err_J = pose.mean.__class__.jac_right(err_hat)
-        new_cov = err_J@(np.eye(9)-K@H)@pose.cov@err_J.T #reset
-
+        I_KH = np.eye(9)-K@H
+        ncov = I_KH@pose.cov@I_KH.T + K@R@K.T #joseph form
+        new_cov = err_J@ncov@err_J.T #reset
         return PlatformState(new_mean, new_cov)
     

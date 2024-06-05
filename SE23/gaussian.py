@@ -97,29 +97,34 @@ class MultiVarGauss:
         """
         Draw ellipse based on the 3 more important directions of the covariance
         """
+        n = min(self.mean.shape[0], 3)
+        cov = self.cov[:n, :n]
+        mean = self.mean[:n]
+
         n_ellipsis = max(1, min(n_ellipsis, len(self.mean)-1, 3))
 
         idxs = [[0, 1], [0, 2], [1, 2]]
 
-        V, eig_vals, _ = np.linalg.svd(self.cov)
+
+        V, eig_vals, _ = np.linalg.svd(cov)
         eig_root = np.sqrt(eig_vals)
         dirs = n_std*V@np.diag(eig_root)
         idx = np.argsort(-eig_vals) #find the index of the biggest eigenvalues, = the smallest when negating
        
         coords = MultiVarGauss.__hyperspherical_coords__(2, n_points)
 
-        lines = np.empty((coords.shape[1], self.mean.shape[0]))
+        lines = np.empty((coords.shape[1], mean.shape[0]))
 
         for n in range(n_ellipsis):
             xi = dirs[:, idx[idxs[n]]]@coords
 
             for i, x in enumerate(xi.T):
-                lines[i, :] = x + self.mean
+                lines[i, :] = x + mean
 
-            if self.mean.shape[0] == 3:
-                ax.plot(lines[:, 0], lines[:, 1], lines[:, 2], color=color, alpha=0.4)
+            if mean.shape[0] > 2:
+                ax.plot(*lines.T, color=color, alpha=0.4)                
             else:
-                ax.fill(lines[:, 0], lines[:, 1], color=color, alpha=0.2)
+                ax.fill(*lines[:, :2].T, color=color, alpha=0.2)
 
 
     

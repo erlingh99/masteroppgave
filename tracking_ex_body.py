@@ -83,7 +83,7 @@ ax = fig.add_subplot(111)
 
 plot_as_SE2(ax, agent.state, color="green") #plot initial state
 plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
-plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="orange")
 
 agent_pos = np.empty((2, n_steps*n_times + 1))
 #sim
@@ -114,7 +114,7 @@ for n in tqdm(range(n_times)):
 
     plot_as_SE2(ax, agent.state, color="green")
     plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
-    plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
+    plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="orange")
 
 
 
@@ -129,7 +129,7 @@ for n in tqdm(range(n_times)):
 
 plot_as_SE2(ax, agent.state, color="green") #plot the last ellipsis
 plot_as_2d(ax, agent.targets[0].convert_state_to_world_lin(agent.state), color="pink")
-plot_as_SE2(ax, agent.targets[0].convert_state_to_world_SE3_2(agent.state), color="orange")
+plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="orange")
 
 agent_pos[:, -1] = agent.state.pos[:2] #add final position
 ax.plot(agent_pos[0,:], agent_pos[1, :], "g--")

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from .utils import cross_matrix, from_cross_matrix
 from .quaternion import RotationQuaternion, Quaternion
@@ -233,6 +234,10 @@ class SO3(LieGroup):
         theta = np.arccos(cTheta)
         w = theta/(2*sTheta)*from_cross_matrix(self.R - self.R.T)
         return w
+    
+
+    def as_euler(self) -> 'np.ndarray[3]':
+        return Rotation.from_matrix(self.as_matrix()).as_euler('xyz')
     
     @classmethod
     def from_matrix(cls, R):
@@ -524,10 +529,11 @@ class SE3_2(LieGroup):
         return SE3_2(self.R.T, -(self.R.T@self.v), -(self.R.T@self.p))
 
     def Log(self) -> np.ndarray[9]:
-        Jinv = self.R.inverse_left_jacobian()
+        theta = self.R.Log()
+        Jinv = SO3.inverse_jac_left(theta)
         nu = Jinv@self.v
         rho = Jinv@self.p
-        return np.concatenate((self.R.Log(), nu, rho))
+        return np.concatenate((theta, nu, rho))
     
     def as_matrix(self):
         m = np.eye(5)
@@ -542,7 +548,7 @@ class SE3_2(LieGroup):
         tau = [theta, nu, rho]
         """
         R = SO3.Exp(tau[:3])
-        J = R.left_jacobian()
+        J = SO3.jac_left(tau[:3])
         return SE3_2(R, J@tau[3:6], J@tau[6:])
     
     @property
@@ -651,6 +657,10 @@ class SO3xR3xR3(LieGroup):
     def action(self, x):
         return self.R@x + self.p
     
+    def action2(self, x: np.ndarray[6]) -> np.ndarray[6]:
+        return np.concatenate([self.R@x[:3] + self.p,
+                               self.R@x[3:] + self.v])
+    
     def compose(self, other: "LieGroup"):
         return SO3xR3xR3(self.R@other.R, self.v + self.R@other.v, self.p + self.R@other.p)
 
@@ -712,7 +722,7 @@ class SO3xR3(LieGroup):
     
     def action(self, x):
         return self.R@x + self.p[:, None]
-    
+       
     def compose(self, other: "LieGroup"):
         return SO3xR3(self.R@other.R, self.p + self.R@other.p)
 

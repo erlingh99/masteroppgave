@@ -1,7 +1,8 @@
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+import numpy as np
 
-from ESKF.utils.dataloader import load_data
+from ESKF.utils.dataloader import load_data, load_custom
 from ESKF.states import EskfState, ImuMeasurement, GnssMeasurement
 from ESKF.senfuslib.gaussian import MultiVarGauss
 from ESKF.senfuslib.timesequence import TimeSequence
@@ -61,7 +62,10 @@ def main():
     tslice = (start_time_sim, end_time_sim, imu_min_dt_sim)
     gnss_min_dt = gnss_min_dt_sim
 
-    x_gt, z_imu_tseq, z_gnss_tseq = load_data(fname)
+    # x_gt, z_imu_tseq, z_gnss_tseq = load_data(fname)
+    gnssN = np.diag([eskf_sim.sensor.gnss_std_ne, eskf_sim.sensor.gnss_std_ne, eskf_sim.sensor.gnss_std_d])**2
+    imuN = np.diag(np.concatenate([eskf_sim.model.gyro_std, eskf_sim.model.accm_std]))**2
+    x_gt, z_imu_tseq, z_gnss_tseq = load_custom(gnssN, imuN)
 
     z_imu_tseq = z_imu_tseq.slice_time(*tslice)
     z_gnss_tseq = z_gnss_tseq.slice_time(z_imu_tseq.times[0],

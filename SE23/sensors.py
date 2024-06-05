@@ -23,7 +23,7 @@ class NonLinearMeasurementModel:
         z_hat = self.__measurement_function__(state)
         H = self.__measurement_jacobian__(state)
         S = self.innovation_covariance(state, H)
-        return z_hat, S, H
+        return z_hat, S, H, self.get_measurement_covariance(state.mean)
     
     def innovation_covariance(self, state, H):
         return H@state.cov@H.T + self.get_measurement_covariance(state.mean)
