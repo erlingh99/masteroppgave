@@ -7,7 +7,7 @@ from .states import TargetState, PlatformState, StackedState
 from .measurements import TargetMeasurement
 from .sensors import RelativePositionSensor
 from .utils import cross_matrix
-from .lie_theory import LieGroup
+from .lie_theory import LieGroup, SE3_2
 
 
 @dataclass
@@ -85,7 +85,7 @@ class TargetWorld(Target):
     
 @dataclass
 class TargetBody(Target):
-    cls: InitVar[LieGroup]
+    cls: InitVar[LieGroup] = SE3_2
 
     def __post_init__(self, cls):
         self.motion_model = CV_body(self.var_acc, cls)
@@ -132,7 +132,7 @@ class TargetBody(Target):
 
 @dataclass
 class TargetBody2(Target):
-    cls: InitVar[LieGroup]
+    cls: InitVar[LieGroup] = SE3_2
 
     def __post_init__(self, cls):
         self.motion_model = CV_body2(self.var_acc, cls)

@@ -15,7 +15,7 @@ np.random.seed(42)
 
 alpha = 0.05
 
-N = 2_001
+N = 10_001
 N = min(N, 29_999)
 
 g = np.array([0, 0, 9.81])
@@ -29,14 +29,14 @@ acc = gt["acc"]
 gyro = gt["gyro"]
 
 acc_noise_std = np.array([1e-2, 1e-2, 1e-2])
-gyro_noise_std = np.array([1e-2, 1e-2, 1e-2])
+gyro_noise_std = np.array([1e-2, 1e-2, 1e-2])*10
 
 gnss_std = 2
 gnss_std_up = 2
 GNSS_dt = 5 #in seconds
 
 radar_noise_std = 2
-radar_dt = 5 #in seconds
+radar_dt = 1 #in seconds
 
 IMU_noise = np.diag([*gyro_noise_std, *acc_noise_std])**2 #imu noise, gyro, acc
 GNSS_noise = np.diag([gnss_std, gnss_std, gnss_std_up])**2
@@ -46,7 +46,7 @@ radar_noise = np.diag([radar_noise_std]*3)**2
 T_pred = np.empty(N, dtype=PlatformState)
 T_pred_ESKF = np.empty(N, dtype=PlatformState)
 
-init_cov = 0.01*np.diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])**2
+init_cov = np.diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])**2
 
 #true start pos
 T0 = SE3_2(SO3(rot[0]), v[0], p[0])
@@ -220,13 +220,19 @@ euler_ESKF = np.empty((N, 3))
 euler_gt = np.empty((N, 3))
 
 pos_t = np.empty((N, 3))
+vel_t = np.empty((N, 3))
 pos_t_ESKF = np.empty((N, 3))
+vel_t_ESKF = np.empty((N, 3))
 
 pos_t_w = np.empty((N, 3))
+vel_t_w = np.empty((N, 3))
 pos_t_ESKF_w = np.empty((N, 3))
+vel_t_ESKF_w = np.empty((N, 3))
 
 pos_t_n = np.empty((N, 3))
+vel_t_n = np.empty((N, 3))
 pos_t_ESKF_n = np.empty((N, 3))
+vel_t_ESKF_n = np.empty((N, 3))
 
 for i in range(N):
     pos[i] = T_pred[i].mean.p
@@ -242,12 +248,18 @@ for i in range(N):
 
     pos_t[i] = target_state[i].pos
     pos_t_ESKF[i] = target_state_ESKF[i].pos
+    vel_t[i] = target_state[i].vel
+    vel_t_ESKF[i] = target_state_ESKF[i].vel
     
     pos_t_w[i] = target_world_state[i].pos
     pos_t_ESKF_w[i] = target_world_state_ESKF[i].pos
+    vel_t_w[i] = target_world_state[i].vel
+    vel_t_ESKF_w[i] = target_world_state_ESKF[i].vel
 
     pos_t_n[i] = target_naive_state[i].pos
     pos_t_ESKF_n[i] = target_naive_state_ESKF[i].pos
+    vel_t_n[i] = target_naive_state[i].vel
+    vel_t_ESKF_n[i] = target_naive_state_ESKF[i].vel
 
 
 ax.plot(*pos.T, "r--", alpha=1)
@@ -562,5 +574,29 @@ print("\nNaive ESKF + world, total")
 print(f"Percentage of NEES inside bounds {percents_ESKF}%")
 print(f"ANEES: {ANEES_ESKF}")
 
+
+
+fig, axs = plt.subplots(2, 3)
+axs = axs.flatten()
+
+for i, ax in enumerate(axs):
+    if i < 3:
+        ax.plot(target_state_gt[:, i], "--", color="orange")
+        ax.plot(pos_t[:, i], color="red")
+        ax.plot(pos_t_ESKF[:, i], color="green")
+        ax.plot(pos_t_w[:, i], color="red")
+        ax.plot(pos_t_ESKF_w[:, i], color="green")
+        ax.plot(pos_t_n[:, i], color="red")
+        ax.plot(pos_t_ESKF_n[:, i], color="green")
+        ax.set_title(f"position {'xyz'[i]}")
+    elif i < 6:
+        ax.plot(target_state_gt[:, i], "--", color="orange")
+        ax.plot(vel_t[:, i-3], color="red")
+        ax.plot(vel_t_ESKF[:, i-3], color="green")
+        ax.plot(vel_t_w[:, i-3], color="red")
+        ax.plot(vel_t_ESKF_w[:, i-3], color="green")
+        ax.plot(vel_t_n[:, i-3], color="red")
+        ax.plot(vel_t_ESKF_n[:, i-3], color="green")
+        ax.set_title(f"velocity {'xyz'[i-3]}")
 
 plt.show()
