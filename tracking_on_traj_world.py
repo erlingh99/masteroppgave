@@ -15,7 +15,7 @@ np.random.seed(42)
 
 alpha = 0.05
 
-N = 10_001
+N = 2_001
 N = min(N, 29_999)
 
 g = np.array([0, 0, 9.81])
@@ -46,7 +46,7 @@ radar_noise = np.diag([radar_noise_std]*3)**2
 T_pred = np.empty(N, dtype=PlatformState)
 T_pred_ESKF = np.empty(N, dtype=PlatformState)
 
-init_cov = np.diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])**2
+init_cov = 0.01*np.diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])**2
 
 #true start pos
 T0 = SE3_2(SO3(rot[0]), v[0], p[0])

@@ -37,7 +37,7 @@ class TargetWorldNaive(Target):
 
     def update(self, platform_state: PlatformState, z: TargetMeasurement, sensor_covar):
         H = np.block([platform_state.rot.T, np.zeros((3,3))])
-        zhat = self.state.pos
+        zhat = platform_state.mean.inverse()@self.state.pos
         innov = z.relative_pos - zhat
         S = H@self.state.cov@H.T + sensor_covar
         K = self.state.cov@np.linalg.solve(S.T, H).T
@@ -45,7 +45,6 @@ class TargetWorldNaive(Target):
         cov = (np.eye(6)-K@H)@self.state.cov
         
         self.state = TargetState(self.state.mean + err, cov)
-
 
 
 @dataclass
