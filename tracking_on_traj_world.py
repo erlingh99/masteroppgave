@@ -722,6 +722,8 @@ for i, ax in enumerate(axs):
         ax.plot(pos_t_ESKF_w[:, i], color="green")
         ax.plot(pos_t_n[:, i], color="red")
         ax.plot(pos_t_ESKF_n[:, i], color="green")
+        ax.plot(pos_t_nb[:, i], color="red")
+        ax.plot(pos_t_ESKF_nb[:, i], color="green")
         ax.set_title(f"position {'xyz'[i]}")
     elif i < 6:
         ax.plot(target_state_gt[:, i], "--", color="orange")
@@ -731,6 +733,8 @@ for i, ax in enumerate(axs):
         ax.plot(vel_t_ESKF_w[:, i-3], color="green")
         ax.plot(vel_t_n[:, i-3], color="red")
         ax.plot(vel_t_ESKF_n[:, i-3], color="green")
+        ax.plot(vel_t_nb[:, i-3], color="red")
+        ax.plot(vel_t_ESKF_nb[:, i-3], color="green")
         ax.set_title(f"velocity {'xyz'[i-3]}")
 
 plt.show()
