@@ -128,7 +128,7 @@ for n in tqdm(range(n_times)):
 
     ax.plot(z_gnss.pos[0], z_gnss.pos[1], "gx")
 
-    y_world = target_state_gt[(n+1)*n_steps, :3] #this is the actual world position of the target plus noise
+    y_world = Rot(t)@y.relative_pos + p(t) #this is the actual world position of the target plus noise
     y_world_hat = agent.state.mean@y.relative_pos #this is the estimated world position of the target plus noise
 
     ax.plot(y_world[0], y_world[1], "bx")

@@ -181,3 +181,62 @@ class TargetBody2(Target):
         ad_inv = self.state.mean.inverse().adjoint()
         tot_cov = ad_inv@platform_state.cov@ad_inv.T + self.state.cov
         return PlatformState(tot_mean, tot_cov)
+    
+
+@dataclass
+class TargetBodyNaive(Target):
+    cls: InitVar[LieGroup] = SE3_2
+
+    def __post_init__(self, cls):
+        self.motion_model = CV_body(self.var_acc, cls)
+
+    def propegate(self, dt, platform_state_k, platform_state_kp1):
+        Rhatk = platform_state_k.rot
+        Rhatkp1 = platform_state_kp1.rot
+
+        dR = Rhatkp1.T@Rhatk
+        A = np.block([[dR, dt*dR], [np.zeros((3,3)), dR]])
+        b = np.concatenate([Rhatkp1.T@(platform_state_k.pos - platform_state_kp1.pos + dt*platform_state_k.vel),
+                            Rhatkp1.T@(platform_state_k.vel - platform_state_kp1.vel)])
+        n_mean = A@self.state.mean + b 
+
+        J_xb_xw = np.block([[Rhatkp1.T, np.zeros((3,3))],
+                            [np.zeros((3, 3)), Rhatkp1.T]])
+
+        cv_noise = np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
+                             [dt**2/2*np.eye(3), dt*np.eye(3)]])*self.var_acc
+
+        self.state = TargetState(n_mean, A@self.state.cov@A.T + J_xb_xw@cv_noise@J_xb_xw.T)
+                                                            
+
+    def update(self, z: TargetMeasurement, sensor_covar):
+        H = np.block([np.eye(3), np.zeros((3,3))])
+        zhat = self.state.pos
+        innov = z.relative_pos - zhat
+        S = H@self.state.cov@H.T + sensor_covar
+        K = self.state.cov@np.linalg.solve(S.T, H).T
+        err = K@innov
+        cov = (np.eye(6)-K@H)@self.state.cov
+        
+        self.state = TargetState(self.state.mean + err, cov)
+
+
+    def convert_state_to_world_lin(self, platform_state: PlatformState):
+        Rhat = platform_state.rot
+        J1 = np.block([[Rhat, np.zeros((3,3))],
+                        [np.zeros((3, 3)), Rhat]])
+        
+        return TargetState(platform_state.mean.action2(self.state.mean), J1@self.state.cov@J1.T)
+
+    def convert_state_to_world_manifold(self, platform_state: PlatformState):
+        # local_mean = SE3_2(SO3.Exp([0, 0, 0]), self.state.vel, self.state.pos)
+        # tau = local_mean.Log()
+        tau = np.array([0,0,0,*self.state.vel, *self.state.pos])
+        local_mean = platform_state.mean.__class__.Exp(tau)
+
+        reorder_mat = np.block([[np.zeros((3,6))], [np.zeros((3,3)), np.eye(3)], [np.eye(3), np.zeros((3,3))]]) #need to reorder the states to match the SE3_2 convention
+        local_cov = reorder_mat@self.state.cov@reorder_mat.T
+
+        tot_mean = platform_state.mean@local_mean
+        return PlatformState(tot_mean, local_cov)
+        

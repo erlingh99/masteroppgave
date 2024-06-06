@@ -6,14 +6,17 @@ from scipy.stats import chi2
 
 from SE23.agent import Agent
 from SE23.measurements import IMU_Measurement, GNSS_Measurement, TargetMeasurement
-from SE23.target import TargetWorld, TargetBody, TargetWorldNaive
+from SE23.target import TargetWorld, TargetWorldNaive, TargetBody, TargetBodyNaive
 from SE23.lie_theory import SE3_2, SO3, SE3, SO3xR3xR3
 from SE23.states import PlatformState, TargetState
 from SE23.plot_utils import plot_3d_frame
 
-np.random.seed(42)
+np.random.seed(0)
 
 alpha = 0.05
+
+manifold_body_convert = True
+
 
 N = 10_001
 N = min(N, 29_999)
@@ -29,13 +32,13 @@ acc = gt["acc"]
 gyro = gt["gyro"]
 
 acc_noise_std = np.array([1e-2, 1e-2, 1e-2])
-gyro_noise_std = np.array([1e-2, 1e-2, 1e-2])*10
+gyro_noise_std = np.array([1e-2, 1e-2, 1e-2])
 
 gnss_std = 2
 gnss_std_up = 2
 GNSS_dt = 5 #in seconds
 
-radar_noise_std = 2
+radar_noise_std = 5
 radar_dt = 1 #in seconds
 
 IMU_noise = np.diag([*gyro_noise_std, *acc_noise_std])**2 #imu noise, gyro, acc
@@ -66,7 +69,7 @@ agent = Agent(IMU_noise, GNSS_noise, radar_noise, init_state)
 agent_ESKF = Agent(IMU_noise, GNSS_noise, radar_noise, init_state_ESKF)
 
 #create target
-pt_0 = np.array([-100, 100, 100])
+pt_0 = np.array([-100, 100, 100]) #this is in body of platform!!
 vt_0 = np.array([10, 0, 0])
 init_target_cov = np.diag([2, 2, 2, 2, 2, 2])**2
 init_target_mean = multivariate_normal(np.array([*pt_0, *vt_0]), init_target_cov)
@@ -82,20 +85,22 @@ Q = np.block([[dt**3/3*np.eye(3), dt**2/2*np.eye(3)],
               [dt**2/2*np.eye(3), dt*np.eye(3)]])*cv_velocity_variance
 
 target_state_gt = np.empty((N, 6))
-target_state_gt[0] = np.array([*pt_0, *vt_0])
+target_state_gt[0] = np.concatenate([rot[0]@pt_0+p[0], rot[0]@vt_0+v[0]])
 
 TARGET_ID = 0
 target = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose, cls=SE3_2)
 target_ESKF = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose_ESKF, cls=SO3xR3xR3)
 
-# target_state = np.empty(N, dtype=PlatformState)
-target_state = np.empty(N, dtype=TargetState)
-# target_state_ESKF = np.empty(N, dtype=PlatformState)
-target_state_ESKF = np.empty(N, dtype=TargetState)
-# target_state[0] = target.convert_state_to_world_manifold(init_state)
-target_state[0] = target.convert_state_to_world_lin(init_state)
-# target_state_ESKF[0] = target_ESKF.convert_state_to_world_manifold(init_state_ESKF)
-target_state_ESKF[0] = target_ESKF.convert_state_to_world_lin(init_state_ESKF)
+if manifold_body_convert:
+    target_state = np.empty(N, dtype=PlatformState)
+    target_state_ESKF = np.empty(N, dtype=PlatformState)
+    target_state[0] = target.convert_state_to_world_manifold(init_state)
+    target_state_ESKF[0] = target_ESKF.convert_state_to_world_manifold(init_state_ESKF)
+else:
+    target_state = np.empty(N, dtype=TargetState)
+    target_state_ESKF = np.empty(N, dtype=TargetState)
+    target_state[0] = target.convert_state_to_world_lin(init_state)
+    target_state_ESKF[0] = target_ESKF.convert_state_to_world_lin(init_state_ESKF)
 
 TARGET_ID_WORLD = 1
 target_world = TargetWorld(id=TARGET_ID_WORLD, var_acc=cv_velocity_variance, state=target.convert_state_to_world_lin(init_state))
@@ -115,6 +120,23 @@ target_naive_state = np.empty(N, dtype=TargetState)
 target_naive_state_ESKF = np.empty(N, dtype=TargetState)
 target_naive_state[0] = target_naive.state
 target_naive_state_ESKF[0] = target_naive_ESKF.state
+
+### assuming ground truth tracker (body)
+TARGET_ID_BODY_NAIVE = 3
+target_body_naive = TargetBodyNaive(TARGET_ID_BODY_NAIVE, var_acc=cv_velocity_variance, state=init_target_pose)
+target_body_naive_ESKF = TargetBodyNaive(TARGET_ID_BODY_NAIVE, var_acc=cv_velocity_variance, state=init_target_pose_ESKF)
+
+if manifold_body_convert:
+    target_body_naive_state = np.empty(N, dtype=PlatformState)
+    target_body_naive_state_ESKF = np.empty(N, dtype=PlatformState)
+    target_body_naive_state[0] = target_body_naive.convert_state_to_world_manifold(init_state)
+    target_body_naive_state_ESKF[0] = target_body_naive_ESKF.convert_state_to_world_manifold(init_state_ESKF)
+else:
+    target_body_naive_state = np.empty(N, dtype=TargetState)
+    target_body_naive_state_ESKF = np.empty(N, dtype=TargetState)
+    target_body_naive_state[0] = target_body_naive.convert_state_to_world_lin(init_state)
+    target_body_naive_state_ESKF[0] = target_body_naive_ESKF.convert_state_to_world_lin(init_state_ESKF)
+
 
 ###Generate measurements
 def generate_IMU_measurement(k):
@@ -152,20 +174,27 @@ for k in tqdm(range(N - 1)):
 
     if (k*dt)%radar_dt == 0 and k > 0:
         y_target = generate_radar_measurement(k, target_state_gt[k, :3])
-        # radar_pos.append((T_pred[k].mean@y_target.relative_pos, target_state_gt[k, :3]))
         radar_pos.append((T_pred[k].mean@y_target.relative_pos, T_pred_ESKF[k].mean@y_target.relative_pos, target_state_gt[k, :3]))
 
         agent.target_update(TARGET_ID, y_target)
-        # target_state[k] = agent.targets[0].convert_state_to_world_manifold(agent.state)
-        target_state[k] = agent.targets[0].convert_state_to_world_lin(agent.state)
+        agent_ESKF.target_update(TARGET_ID, y_target)
+
+        target_body_naive.update(y_target, radar_noise)
+        target_body_naive_ESKF.update(y_target, radar_noise)
+
+        if manifold_body_convert:
+            target_state[k] = agent.targets[0].convert_state_to_world_manifold(agent.state)
+            target_state_ESKF[k] = agent_ESKF.targets[0].convert_state_to_world_manifold(agent_ESKF.state)
+            target_body_naive_state[k] = target_body_naive.convert_state_to_world_manifold(agent.state)
+            target_body_naive_state_ESKF[k] = target_body_naive_ESKF.convert_state_to_world_manifold(agent_ESKF.state)
+        else:
+            target_state[k] = agent.targets[0].convert_state_to_world_lin(agent.state)
+            target_state_ESKF[k] = agent_ESKF.targets[0].convert_state_to_world_lin(agent_ESKF.state)
+            target_body_naive_state[k] = target_body_naive.convert_state_to_world_lin(agent.state)
+            target_body_naive_state_ESKF[k] = target_body_naive_ESKF.convert_state_to_world_lin(agent_ESKF.state)
 
         agent.target_update(TARGET_ID_WORLD, y_target)
         target_world_state[k] = agent.targets[1].state
-
-
-        agent_ESKF.target_update(TARGET_ID, y_target)
-        # target_state_ESKF[k] = agent_ESKF.targets[0].convert_state_to_world_manifold(agent_ESKF.state)
-        target_state_ESKF[k] = agent_ESKF.targets[0].convert_state_to_world_lin(agent_ESKF.state)
 
         agent_ESKF.target_update(TARGET_ID_WORLD, y_target)
         target_world_state_ESKF[k] = agent_ESKF.targets[1].state
@@ -179,21 +208,33 @@ for k in tqdm(range(N - 1)):
     z_imu = generate_IMU_measurement(k)
 
     agent.propegate(z_imu, dt)
-    T_pred[k+1] = agent.state
-    # target_state[k+1] = agent.targets[0].convert_state_to_world_manifold(agent.state)
-    target_state[k+1] = agent.targets[0].convert_state_to_world_lin(agent.state)
-    target_world_state[k+1] = agent.targets[1].state
-
     agent_ESKF.propegate(z_imu, dt)
+    T_pred[k+1] = agent.state
     T_pred_ESKF[k+1] = agent_ESKF.state
-    # target_state_ESKF[k+1] = agent_ESKF.targets[0].convert_state_to_world_manifold(agent_ESKF.state)
-    target_state_ESKF[k+1] = agent_ESKF.targets[0].convert_state_to_world_lin(agent_ESKF.state)
+
+    target_body_naive.propegate(dt, T_pred[k], T_pred[k+1])
+    target_body_naive_ESKF.propegate(dt, T_pred_ESKF[k], T_pred_ESKF[k+1])
+    
+    if manifold_body_convert:
+        target_state[k+1] = agent.targets[0].convert_state_to_world_manifold(agent.state)
+        target_state_ESKF[k+1] = agent_ESKF.targets[0].convert_state_to_world_manifold(agent_ESKF.state)
+        target_body_naive_state[k+1] = target_body_naive.convert_state_to_world_manifold(agent.state)
+        target_body_naive_state_ESKF[k+1] = target_body_naive_ESKF.convert_state_to_world_manifold(agent_ESKF.state)
+    else:
+        target_state[k+1] = agent.targets[0].convert_state_to_world_lin(agent.state)
+        target_state_ESKF[k+1] = agent_ESKF.targets[0].convert_state_to_world_lin(agent_ESKF.state)
+        target_body_naive_state[k+1] = target_body_naive.convert_state_to_world_lin(agent.state)
+        target_body_naive_state_ESKF[k+1] = target_body_naive_ESKF.convert_state_to_world_lin(agent_ESKF.state)
+    
+    
+    target_world_state[k+1] = agent.targets[1].state
     target_world_state_ESKF[k+1] = agent_ESKF.targets[1].state
 
     target_naive.propegate(dt)
     target_naive_state[k+1] = target_naive.state
     target_naive_ESKF.propegate(dt)
     target_naive_state_ESKF[k+1] = target_naive_ESKF.state
+
 
     target_state_gt[k+1] = Fcv@target_state_gt[k] + multivariate_normal([0]*6, Q)
     
@@ -234,6 +275,11 @@ vel_t_n = np.empty((N, 3))
 pos_t_ESKF_n = np.empty((N, 3))
 vel_t_ESKF_n = np.empty((N, 3))
 
+pos_t_nb = np.empty((N, 3))
+vel_t_nb = np.empty((N, 3))
+pos_t_ESKF_nb = np.empty((N, 3))
+vel_t_ESKF_nb = np.empty((N, 3))
+
 for i in range(N):
     pos[i] = T_pred[i].mean.p
     pos_ESKF[i] = T_pred_ESKF[i].mean.p
@@ -261,18 +307,23 @@ for i in range(N):
     vel_t_n[i] = target_naive_state[i].vel
     vel_t_ESKF_n[i] = target_naive_state_ESKF[i].vel
 
+    pos_t_nb[i] = target_body_naive_state[i].pos
+    pos_t_ESKF_nb[i] = target_body_naive_state_ESKF[i].pos
+    vel_t_nb[i] = target_body_naive_state[i].vel
+    vel_t_ESKF_nb[i] = target_body_naive_state_ESKF[i].vel
+
 
 ax.plot(*pos.T, "r--", alpha=1)
 ax.plot(*pos_ESKF.T, "g--", alpha=1)
 
 ax.plot(*pos_t.T, "r--", alpha=1)
-ax.plot(*pos_t_ESKF.T, "g--", alpha=1)
+# ax.plot(*pos_t_ESKF.T, "g--", alpha=1)
 
-ax.plot(*pos_t_w.T, "r--", alpha=1)
-ax.plot(*pos_t_ESKF_w.T, "g--", alpha=1)
+# ax.plot(*pos_t_w.T, "r--", alpha=1)
+# ax.plot(*pos_t_ESKF_w.T, "g--", alpha=1)
 
-ax.plot(*pos_t_n.T, "r--", alpha=1)
-ax.plot(*pos_t_ESKF_n.T, "g--", alpha=1)
+# ax.plot(*pos_t_n.T, "r--", alpha=1)
+# ax.plot(*pos_t_ESKF_n.T, "g--", alpha=1)
 
 # print("\nMean norm of error between pos and gt pos:", np.linalg.norm(p[:N] - pos, axis=1).mean())
 # print("Frobenius norm of difference of last covariances", np.linalg.norm(T_pred[-1].cov - T_pred_ESKF[-1].cov, ord="fro"))
@@ -280,13 +331,13 @@ ax.plot(*pos_t_ESKF_n.T, "g--", alpha=1)
 
 for i in range(0, N, 400):
     target_state[i].draw_significant_ellipses(ax, color="orange")
-    target_world_state[i].draw_significant_ellipses(ax, color="red")
+    # target_world_state[i].draw_significant_ellipses(ax, color="red")
 
-    target_state_ESKF[i].draw_significant_ellipses(ax, color="green")
-    target_world_state_ESKF[i].draw_significant_ellipses(ax, color="blue")
+    # target_state_ESKF[i].draw_significant_ellipses(ax, color="green")
+    # target_world_state_ESKF[i].draw_significant_ellipses(ax, color="blue")
 
-    target_naive_state[i].draw_significant_ellipses(ax, color="yellow")
-    target_naive_state_ESKF[i].draw_significant_ellipses(ax, color="pink")
+    # target_naive_state[i].draw_significant_ellipses(ax, color="yellow")
+    # target_naive_state_ESKF[i].draw_significant_ellipses(ax, color="pink")
 
 for i in range(499, N+500, 500):
     idx = min(i, N-2)
@@ -344,11 +395,22 @@ NEES_naive_ESKF = np.empty(N, float)
 NEES_naive_ESKF_vel = np.empty(N, float)
 NEES_naive_ESKF_pos = np.empty(N, float)
 
+NEES_body_naive = np.empty(N, float)
+NEES_body_naive_vel = np.empty(N, float)
+NEES_body_naive_pos = np.empty(N, float)
+
+NEES_body_naive_ESKF = np.empty(N, float)
+NEES_body_naive_ESKF_vel = np.empty(N, float)
+NEES_body_naive_ESKF_pos = np.empty(N, float)
+
+reorder = np.block([[np.zeros((3,3)), np.eye(3)], [np.eye(3), np.zeros((3,3))]])
 for k in range(N):
-    # m, c = target_state[k].mean, target_state[k].cov[3:, 3:]
-    # err = m.inverse().action2(target_state_gt[k])
-    m, c = target_state[k].mean, target_state[k].cov
-    err = target_state_gt[k] - m
+    if manifold_body_convert:
+        m, c = target_state[k].mean, reorder@target_state[k].cov[3:, 3:]@reorder.T
+        err = m.inverse().action2(target_state_gt[k])
+    else:
+        m, c = target_state[k].mean, target_state[k].cov
+        err = target_state_gt[k] - m
     NEES[k] = err.T@np.linalg.solve(c, err)
     NEES_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
     NEES_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
@@ -359,10 +421,12 @@ for k in range(N):
     NEES_world_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
     NEES_world_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
 
-    # m, c = target_state_ESKF[k].mean, target_state_ESKF[k].cov[3:, 3:]
-    # err = m.inverse().action2(target_state_gt[k])
-    m, c = target_state_ESKF[k].mean, target_state_ESKF[k].cov
-    err = target_state_gt[k] - m
+    if manifold_body_convert:
+        m, c = target_state_ESKF[k].mean, reorder@target_state_ESKF[k].cov[3:, 3:]@reorder.T
+        err = m.inverse().action2(target_state_gt[k])
+    else:
+        m, c = target_state_ESKF[k].mean, target_state_ESKF[k].cov
+        err = target_state_gt[k] - m
     NEES_ESKF[k] = err.T@np.linalg.solve(c, err)
     NEES_ESKF_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
     NEES_ESKF_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
@@ -379,12 +443,33 @@ for k in range(N):
     NEES_naive_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
     NEES_naive_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
 
-
     m, c = target_naive_state_ESKF[k].mean, target_naive_state_ESKF[k].cov
     err = target_state_gt[k] - m
     NEES_naive_ESKF[k] = err.T@np.linalg.solve(c, err)
     NEES_naive_ESKF_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
     NEES_naive_ESKF_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
+
+
+    if manifold_body_convert:
+        m, c = target_body_naive_state[k].mean, reorder@target_body_naive_state[k].cov[3:, 3:]@reorder.T
+        err = m.inverse().action2(target_state_gt[k])
+    else:
+        m, c = target_body_naive_state[k].mean, target_body_naive_state[k].cov
+        err = target_state_gt[k] - m
+
+    NEES_body_naive[k] = err.T@np.linalg.solve(c, err)
+    NEES_body_naive_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
+    NEES_body_naive_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
+
+    if manifold_body_convert:
+        m, c = target_body_naive_state_ESKF[k].mean, reorder@target_body_naive_state_ESKF[k].cov[3:, 3:]@reorder.T
+        err = m.inverse().action2(target_state_gt[k])
+    else:
+        m, c = target_body_naive_state_ESKF[k].mean, target_body_naive_state_ESKF[k].cov
+        err = target_state_gt[k] - m
+    NEES_body_naive_ESKF[k] = err.T@np.linalg.solve(c, err)
+    NEES_body_naive_ESKF_pos[k] = err[:3].T@np.linalg.solve(c[:3, :3], err[:3])
+    NEES_body_naive_ESKF_vel[k] = err[3:].T@np.linalg.solve(c[3:, 3:], err[3:])
 
 
 
@@ -401,6 +486,8 @@ ax.plot(NEES_ESKF_pos, lw=0.5, label="ESKF + body")
 ax.plot(NEES_world_ESKF_pos, lw=0.5, label="ESKF + world")
 ax.plot(NEES_naive_pos, lw=0.5, label="Naive SE_2(3) + world")
 ax.plot(NEES_naive_ESKF_pos, lw=0.5, label="Naive ESKF + world")
+ax.plot(NEES_body_naive_pos, lw=0.5, label="Naive SE_2(3) + body")
+ax.plot(NEES_body_naive_ESKF_pos, lw=0.5, label="Naive ESKF + body")
 ax.plot(np.full(N, CI_NEES[0]), "r--")
 ax.plot(np.full(N, CI_NEES[1]), "r--")
 ax.plot(np.full(N, CI_ANEES[0]), "g--")
@@ -416,6 +503,8 @@ ax.plot(NEES_ESKF_vel, lw=0.5, label="ESKF + body")
 ax.plot(NEES_world_ESKF_vel, lw=0.5, label="ESKF + world")
 ax.plot(NEES_naive_vel, lw=0.5, label="Naive SE_2(3) + world")
 ax.plot(NEES_naive_ESKF_vel, lw=0.5, label="Naive ESKF + world")
+ax.plot(NEES_body_naive_vel, lw=0.5, label="Naive SE_2(3) + body")
+ax.plot(NEES_body_naive_ESKF_vel, lw=0.5, label="Naive ESKF + body")
 ax.plot(np.full(N, CI_NEES[0]), "r--")
 ax.plot(np.full(N, CI_NEES[1]), "r--")
 ax.plot(np.full(N, CI_ANEES[0]), "g--")
@@ -466,6 +555,21 @@ print("\nNaive ESKF + world, pos")
 print(f"Percentage of NEES inside bounds {percents_ESKF}%")
 print(f"ANEES: {ANEES_ESKF}")
 
+insideCI_ESKF = (CI_NEES[0] <= NEES_body_naive_pos) * (NEES_body_naive_pos <= CI_NEES[1])
+percents_ESKF = insideCI_ESKF.mean()*100
+ANEES_ESKF = NEES_body_naive_pos.mean()
+print("\nNaive SE_2(3) + body, pos")
+print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+print(f"ANEES: {ANEES_ESKF}")
+
+
+insideCI_ESKF = (CI_NEES[0] <= NEES_body_naive_ESKF_pos) * (NEES_body_naive_ESKF_pos <= CI_NEES[1])
+percents_ESKF = insideCI_ESKF.mean()*100
+ANEES_ESKF = NEES_body_naive_ESKF_pos.mean()
+print("\nNaive ESKF + body, pos")
+print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+print(f"ANEES: {ANEES_ESKF}")
+
 
 insideCI = (CI_NEES[0] <= NEES_vel) * (NEES_vel <= CI_NEES[1])
 percents = insideCI.mean()*100
@@ -509,6 +613,20 @@ print("\nNaive ESKF + world, vel")
 print(f"Percentage of NEES inside bounds {percents_ESKF}%")
 print(f"ANEES: {ANEES_ESKF}")
 
+insideCI_ESKF = (CI_NEES[0] <= NEES_body_naive_vel) * (NEES_body_naive_vel <= CI_NEES[1])
+percents_ESKF = insideCI_ESKF.mean()*100
+ANEES_ESKF = NEES_body_naive_vel.mean()
+print("\nNaive SE_2(3) + body, vel")
+print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+print(f"ANEES: {ANEES_ESKF}")
+
+
+insideCI_ESKF = (CI_NEES[0] <= NEES_body_naive_ESKF_vel) * (NEES_body_naive_ESKF_vel <= CI_NEES[1])
+percents_ESKF = insideCI_ESKF.mean()*100
+ANEES_ESKF = NEES_body_naive_ESKF_vel.mean()
+print("\nNaive ESKF + body, vel")
+print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+print(f"ANEES: {ANEES_ESKF}")
 
 
 CI_NEES = chi2.interval(1 - alpha, 6)
@@ -524,6 +642,8 @@ ax.plot(NEES_ESKF, lw=0.5, label="ESKF + body")
 ax.plot(NEES_world_ESKF, lw=0.5, label="ESKF + world")
 ax.plot(NEES_naive, lw=0.5, label="Naive SE_2(3) + world")
 ax.plot(NEES_naive_ESKF, lw=0.5, label="Naive ESKF + world")
+ax.plot(NEES_body_naive, lw=0.5, label="Naive SE_2(3) + body")
+ax.plot(NEES_body_naive_ESKF, lw=0.5, label="Naive ESKF + body")
 ax.plot(np.full(N, CI_NEES[0]), "r--")
 ax.plot(np.full(N, CI_NEES[1]), "r--")
 ax.plot(np.full(N, CI_ANEES[0]), "g--")
@@ -571,6 +691,20 @@ insideCI_ESKF = (CI_NEES[0] <= NEES_naive_ESKF) * (NEES_naive_ESKF <= CI_NEES[1]
 percents_ESKF = insideCI_ESKF.mean()*100
 ANEES_ESKF = NEES_naive_ESKF.mean()
 print("\nNaive ESKF + world, total")
+print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+print(f"ANEES: {ANEES_ESKF}")
+
+insideCI = (CI_NEES[0] <= NEES_body_naive) * (NEES_body_naive <= CI_NEES[1])
+percents = insideCI.mean()*100
+ANEES = NEES_body_naive.mean()
+print("\nNaive SE_2(3) + body, total")
+print(f"Percentage of NEES inside bounds {percents}%")
+print(f"ANEES: {ANEES}")
+
+insideCI_ESKF = (CI_NEES[0] <= NEES_body_naive_ESKF) * (NEES_body_naive_ESKF <= CI_NEES[1])
+percents_ESKF = insideCI_ESKF.mean()*100
+ANEES_ESKF = NEES_body_naive_ESKF.mean()
+print("\nNaive ESKF + body, total")
 print(f"Percentage of NEES inside bounds {percents_ESKF}%")
 print(f"ANEES: {ANEES_ESKF}")
 
