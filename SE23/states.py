@@ -12,6 +12,9 @@ class TargetState(MultiVarGauss):
     @property
     def vel(self):
         return self.mean[3:]
+    
+    def copy(self):
+        return TargetState(self.mean.copy(), self.cov.copy())
 
 
 class PlatformState(ExponentialGaussian):

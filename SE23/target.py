@@ -173,7 +173,14 @@ class TargetBody2(Target):
         J2 = np.block([[-Rhat@cross_matrix(self.state.pos), np.zeros((3,3)), Rhat],
                         [-Rhat@cross_matrix(self.state.vel), Rhat, np.zeros((3,3))]])
         
-        return TargetState(platform_state.mean.action2(self.state.mean), J1@self.state.cov@J1.T + J2@platform_state.cov@J2.T)
+        reorder = np.block([[np.zeros((3, 6))],
+                            [np.zeros((3, 3)), np.eye(3)],
+                            [np.eye(3), np.zeros((3,3))]])
+        
+        m = np.concatenate([self.state.pos, self.state.vel])
+        c = reorder.T@self.state.cov@reorder
+
+        return TargetState(platform_state.mean.action2(m), J1@c@J1.T + J2@platform_state.cov@J2.T)
 
     def convert_state_to_world_manifold(self, platform_state: PlatformState):
 

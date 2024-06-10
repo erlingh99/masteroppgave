@@ -3,6 +3,8 @@ from numpy.random import multivariate_normal
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy.stats import chi2
+import sys
+
 
 from SE23.agent import Agent
 from SE23.measurements import IMU_Measurement, GNSS_Measurement
@@ -12,6 +14,11 @@ from SE23.plot_utils import plot_3d_frame
 from SE23.utils import exp_NEES
 
 # np.random.seed(1)
+
+savepath = None
+if len(sys.argv) > 1:
+    savepath = sys.argv[1]
+    print(f"saving to ./analaysis/{savepath}")
 
 alpha = 0.05
 
@@ -96,11 +103,12 @@ for k in tqdm(range(N - 1)):
 
 
 #plotting
-fig = plt.figure()
-ax = fig.add_subplot(projection="3d")
+if savepath is None:
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
 
-for gp in gnss_pos:
-    ax.plot(*gp, "bx")
+    for gp in gnss_pos:
+        ax.plot(*gp, "bx")
 
 pos = np.empty((N, 3))
 pos_ESKF = np.empty((N, 3))
@@ -123,39 +131,41 @@ for i in range(N):
 
     euler_gt[i] = SO3.from_matrix(rot[i]).as_euler()
 
-ax.plot(*pos[:].T, "r--", alpha=1)
-ax.plot(*pos_ESKF[:].T, "g--", alpha=1)
+
+if savepath is None:
+    ax.plot(*pos[:].T, "r--", alpha=1)
+    ax.plot(*pos_ESKF[:].T, "g--", alpha=1)
 
 
-print("\nMean norm of error between pos and gt pos:", np.linalg.norm(p[:N] - pos, axis=1).mean())
-print("Frobenius norm of difference of last covariances", np.linalg.norm(T_pred[-1].cov - T_pred_ESKF[-1].cov, ord="fro"))
+    print("\nMean norm of error between pos and gt pos:", np.linalg.norm(p[:N] - pos, axis=1).mean())
+    print("Frobenius norm of difference of last covariances", np.linalg.norm(T_pred[-1].cov - T_pred_ESKF[-1].cov, ord="fro"))
 
-for i in range(499, N+500, 500):
-    idx = min(i, N-2)
+    for i in range(499, N+500, 500):
+        idx = min(i, N-2)
 
-    T_pred[idx].draw_significant_ellipses(ax, color="red")
-    plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
-    
-    T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
-    plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
+        T_pred[idx].draw_significant_ellipses(ax, color="red")
+        plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
+        
+        T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
+        plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
 
-    idx = idx + 1
+        idx = idx + 1
 
-    T_pred[idx].draw_significant_ellipses(ax, color="red")
-    plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
+        T_pred[idx].draw_significant_ellipses(ax, color="red")
+        plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
 
-    T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
-    plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
+        T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
+        plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
 
-    
-plot_3d_frame(ax, SE3(SO3(rot[N]), p[N]), scale=5)
-plot_3d_frame(ax, SE3(SO3(rot[0]), p[0]), scale=5)
-plot_3d_frame(ax, SE3(init_state.rot, init_state.pos), scale=5)
+        
+    plot_3d_frame(ax, SE3(SO3(rot[N]), p[N]), scale=5)
+    plot_3d_frame(ax, SE3(SO3(rot[0]), p[0]), scale=5)
+    plot_3d_frame(ax, SE3(init_state.rot, init_state.pos), scale=5)
 
-#plot gt
-ax.plot(*p[:N].T, "k--")
-ax.plot(*p[N].T, "ko")
-plt.axis("equal")
+    #plot gt
+    ax.plot(*p[:N].T, "k--")
+    ax.plot(*p[N].T, "ko")
+    plt.axis("equal")
 
 #calc NEES
 NEES = np.empty(N, float)
@@ -183,96 +193,105 @@ for k in range(N):
     NEES_ESKF_pos[k] = nees_pos
 
 
-fig, axs = plt.subplots(nrows=2, ncols=4, sharey=True)#, figsize=(8, 5), num=4, clear=True, sharey=True)
-axs = axs.T.flatten()
+if savepath is None:
 
-for i, zips in enumerate(zip(["total", "orientation", "velocity", "position"], [NEES, NEES_ori, NEES_vel, NEES_pos], [NEES_ESKF, NEES_ESKF_ori, NEES_ESKF_vel, NEES_ESKF_pos], [9, 3, 3, 3])):
-    title, nees_arr, nees_eskf_arr, df = zips
+    fig, axs = plt.subplots(nrows=2, ncols=4, sharey=True)#, figsize=(8, 5), num=4, clear=True, sharey=True)
+    axs = axs.T.flatten()
 
-    axs[2*i].set_yscale("log")
-    axs[2*i + 1].set_yscale("log")
+    for i, zips in enumerate(zip(["total", "orientation", "velocity", "position"], [NEES, NEES_ori, NEES_vel, NEES_pos], [NEES_ESKF, NEES_ESKF_ori, NEES_ESKF_vel, NEES_ESKF_pos], [9, 3, 3, 3])):
+        title, nees_arr, nees_eskf_arr, df = zips
 
-    CI_NEES = chi2.interval(1 - alpha, df)
-    CI_ANEES = chi2.interval(1 - alpha, df * N, scale=1/N)
+        axs[2*i].set_yscale("log")
+        axs[2*i + 1].set_yscale("log")
 
-    print(f"\nCI NEES: {CI_NEES}")
-    print(f"CI ANEES: {CI_ANEES}")
+        CI_NEES = chi2.interval(1 - alpha, df)
+        CI_ANEES = chi2.interval(1 - alpha, df * N, scale=1/N)
 
-    axs[2*i].plot(nees_arr, lw=0.5)
-    axs[2*i].plot(np.full(N, CI_NEES[0]), "r--")
-    axs[2*i].plot(np.full(N, CI_NEES[1]), "r--")
-    axs[2*i].plot(np.full(N, CI_ANEES[0]), "g--")
-    axs[2*i].plot(np.full(N, CI_ANEES[1]), "g--")
-    axs[2*i].set_title(f"SE_2(3) {title} NEES")
-    # axs[0].set_ylim(0, CI_NEES[1]*1.1)
+        print(f"\nCI NEES: {CI_NEES}")
+        print(f"CI ANEES: {CI_ANEES}")
 
-    axs[2*i + 1].plot(nees_eskf_arr, lw=0.5)
-    axs[2*i + 1].plot(np.full(N, CI_NEES[0]), "r--")
-    axs[2*i + 1].plot(np.full(N, CI_NEES[1]), "r--")
-    axs[2*i + 1].plot(np.full(N, CI_ANEES[0]), "g--")
-    axs[2*i + 1].plot(np.full(N, CI_ANEES[1]), "g--")
-    axs[2*i + 1].set_title(f"ESKF {title} NEES")
-    # axs[1].set_ylim(0, CI_NEES[1]*1.1)
+        axs[2*i].plot(nees_arr, lw=0.5)
+        axs[2*i].plot(np.full(N, CI_NEES[0]), "r--")
+        axs[2*i].plot(np.full(N, CI_NEES[1]), "r--")
+        axs[2*i].plot(np.full(N, CI_ANEES[0]), "g--")
+        axs[2*i].plot(np.full(N, CI_ANEES[1]), "g--")
+        axs[2*i].set_title(f"SE_2(3) {title} NEES")
+        # axs[0].set_ylim(0, CI_NEES[1]*1.1)
 
-    insideCI = (CI_NEES[0] <= nees_arr) * (nees_arr <= CI_NEES[1])
-    percents = insideCI.mean()*100
-    ANEES = nees_arr.mean()
+        axs[2*i + 1].plot(nees_eskf_arr, lw=0.5)
+        axs[2*i + 1].plot(np.full(N, CI_NEES[0]), "r--")
+        axs[2*i + 1].plot(np.full(N, CI_NEES[1]), "r--")
+        axs[2*i + 1].plot(np.full(N, CI_ANEES[0]), "g--")
+        axs[2*i + 1].plot(np.full(N, CI_ANEES[1]), "g--")
+        axs[2*i + 1].set_title(f"ESKF {title} NEES")
+        # axs[1].set_ylim(0, CI_NEES[1]*1.1)
 
-    insideCI_ESKF = (CI_NEES[0] <= nees_eskf_arr) * (nees_eskf_arr <= CI_NEES[1])
-    percents_ESKF = insideCI_ESKF.mean()*100
-    ANEES_ESKF = nees_eskf_arr.mean()
+        insideCI = (CI_NEES[0] <= nees_arr) * (nees_arr <= CI_NEES[1])
+        percents = insideCI.mean()*100
+        ANEES = nees_arr.mean()
 
-
-    print("\nSE2(3)", title)
-    print(f"Percentage of NEES inside bounds {percents}%")
-    print(f"ANEES: {ANEES}")
+        insideCI_ESKF = (CI_NEES[0] <= nees_eskf_arr) * (nees_eskf_arr <= CI_NEES[1])
+        percents_ESKF = insideCI_ESKF.mean()*100
+        ANEES_ESKF = nees_eskf_arr.mean()
 
 
-    print("\nESKF", title)
-    print(f"Percentage of NEES inside bounds {percents_ESKF}%")
-    print(f"ANEES: {ANEES_ESKF}")
+        print("\nSE2(3)", title)
+        print(f"Percentage of NEES inside bounds {percents}%")
+        print(f"ANEES: {ANEES}")
+
+
+        print("\nESKF", title)
+        print(f"Percentage of NEES inside bounds {percents_ESKF}%")
+        print(f"ANEES: {ANEES_ESKF}")
 
 
 
 
-fig, axs = plt.subplots(3, 3)
-axs = axs.flatten()
+    fig, axs = plt.subplots(3, 3)
+    axs = axs.flatten()
 
-for i, ax in enumerate(axs):
-    if i < 3:
-        ax.plot(p[:N, i], "--", color="orange")
-        ax.plot(pos[:, i], color="red")
-        ax.plot(pos_ESKF[:, i], color="green")
-        ax.set_title(f"position {'xyz'[i]}")
-    elif i < 6:
-        ax.plot(v[:N, i-3], "--", color="orange")
-        ax.plot(vel[:, i-3], color="red")
-        ax.plot(vel_ESKF[:, i-3], color="green")
-        ax.set_title(f"velocity {'xyz'[i-3]}")
-    else: #euler angles
-        ax.plot(euler_gt[:, i-6], "--", color="orange")
-        ax.plot(euler[:, i-6], color="red")
-        ax.plot(euler_ESKF[:, i-6], color="green")
-        ax.set_title(f"angle {'uvw'[i-6]}")
+    for i, ax in enumerate(axs):
+        if i < 3:
+            ax.plot(p[:N, i], "--", color="orange")
+            ax.plot(pos[:, i], color="red")
+            ax.plot(pos_ESKF[:, i], color="green")
+            ax.set_title(f"position {'xyz'[i]}")
+        elif i < 6:
+            ax.plot(v[:N, i-3], "--", color="orange")
+            ax.plot(vel[:, i-3], color="red")
+            ax.plot(vel_ESKF[:, i-3], color="green")
+            ax.set_title(f"velocity {'xyz'[i-3]}")
+        else: #euler angles
+            ax.plot(euler_gt[:, i-6], "--", color="orange")
+            ax.plot(euler[:, i-6], color="red")
+            ax.plot(euler_ESKF[:, i-6], color="green")
+            ax.set_title(f"angle {'uvw'[i-6]}")
 
-print("\n")
-ep = p[:N]-pos
-mean = np.einsum("ij, ji ->", ep, ep.T)/N
-print("RMSE pos", mean**0.5)
-ep = p[:N]-pos_ESKF
-mean = np.einsum("ij, ji ->", ep, ep.T)/N
-print("RMSE pos ESKF", mean**0.5)
-ev = v[:N]-vel
-mean = np.einsum("ij, ji ->", ev, ev.T)/N
-print("RMSE vel", mean**0.5)
-ev = v[:N]-vel_ESKF
-mean = np.einsum("ij, ji ->", ev, ev.T)/N
-print("RMSE vel ESKF", mean**0.5)
-ea = euler_gt - euler
-mean = np.einsum("ij, ji ->", ea, ea.T)/N
-print("RMSE euler", mean**0.5)
-ea = euler_gt - euler_ESKF
-mean = np.einsum("ij, ji ->", ea, ea.T)/N
-print("RMSE euler ESKF", mean**0.5)
+    print("\n")
+    ep = p[:N]-pos
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/3
+    print("RMSE pos", mean**0.5)
+    ep = p[:N]-pos_ESKF
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/3
+    print("RMSE pos ESKF", mean**0.5)
+    ev = v[:N]-vel
+    mean = np.einsum("ij, ji ->", ev, ev.T)/N/3
+    print("RMSE vel", mean**0.5)
+    ev = v[:N]-vel_ESKF
+    mean = np.einsum("ij, ji ->", ev, ev.T)/N/3
+    print("RMSE vel ESKF", mean**0.5)
+    ea = euler_gt - euler
+    mean = np.einsum("ij, ji ->", ea, ea.T)/N/3
+    print("RMSE euler", mean**0.5)
+    ea = euler_gt - euler_ESKF
+    mean = np.einsum("ij, ji ->", ea, ea.T)/N/3
+    print("RMSE euler ESKF", mean**0.5)
 
-plt.show()
+    plt.show()
+
+
+if savepath is not None:
+    NEES_dict = {"se23": {"tot": NEES, "vel": NEES_vel, "pos": NEES_pos, "ori": NEES_ori},
+                 "ESKF": {"tot": NEES_ESKF, "vel":NEES_ESKF_vel, "pos": NEES_ESKF_pos, "ori": NEES_ESKF_ori}}
+
+    np.save("./analysis/" + savepath, NEES_dict, allow_pickle=True)

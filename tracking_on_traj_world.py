@@ -3,6 +3,7 @@ from numpy.random import multivariate_normal
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy.stats import chi2
+import sys
 
 from SE23.agent import Agent
 from SE23.measurements import IMU_Measurement, GNSS_Measurement, TargetMeasurement
@@ -11,14 +12,22 @@ from SE23.lie_theory import SE3_2, SO3, SE3, SO3xR3xR3
 from SE23.states import PlatformState, TargetState
 from SE23.plot_utils import plot_3d_frame
 
-np.random.seed(0)
+savepath = None
+if len(sys.argv) > 1:
+    savepath = sys.argv[1]
+    print(f"saving to ./analysis/{savepath}")
+else:
+    np.random.seed(0)
+    # np.random.seed(42)
 
 alpha = 0.05
 
-manifold_body_convert = True
+manifold_body_convert = False
+
 
 
 N = 10_001
+# N = 2000
 N = min(N, 29_999)
 
 g = np.array([0, 0, 9.81])
@@ -50,6 +59,7 @@ T_pred = np.empty(N, dtype=PlatformState)
 T_pred_ESKF = np.empty(N, dtype=PlatformState)
 
 init_cov = np.diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])**2
+# init_cov = np.diag([0.2, 0.2, 0.2, 0, 0, 0, 0, 0, 0])**2
 
 #true start pos
 T0 = SE3_2(SO3(rot[0]), v[0], p[0])
@@ -239,17 +249,18 @@ for k in tqdm(range(N - 1)):
     target_state_gt[k+1] = Fcv@target_state_gt[k] + multivariate_normal([0]*6, Q)
     
 #plotting
-fig = plt.figure()
-ax = fig.add_subplot(projection="3d")
+if savepath is None:
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
 
-for gp in gnss_pos:
-    ax.plot(*gp, "bx")
+    for gp in gnss_pos:
+        ax.plot(*gp, "bx")
 
-# for ypw, ypwh in radar_pos:
-for ypw, ypw_eskf, ypwh in radar_pos:
-    ax.plot(*ypw, "bx")
-    ax.plot(*ypw_eskf, "gx")
-    ax.plot(*ypwh, "bo")
+    # for ypw, ypwh in radar_pos:
+    for ypw, ypw_eskf, ypwh in radar_pos:
+        ax.plot(*ypw, "bx")
+        ax.plot(*ypw_eskf, "gx")
+        ax.plot(*ypwh, marker="o", color="orange")
 
 pos = np.empty((N, 3))
 pos_ESKF = np.empty((N, 3))
@@ -312,61 +323,62 @@ for i in range(N):
     vel_t_nb[i] = target_body_naive_state[i].vel
     vel_t_ESKF_nb[i] = target_body_naive_state_ESKF[i].vel
 
+if savepath is None:
 
-ax.plot(*pos.T, "r--", alpha=1)
-ax.plot(*pos_ESKF.T, "g--", alpha=1)
+    ax.plot(*pos.T, "r--", alpha=1)
+    ax.plot(*pos_ESKF.T, "g--", alpha=1)
 
-ax.plot(*pos_t.T, "r--", alpha=1)
-# ax.plot(*pos_t_ESKF.T, "g--", alpha=1)
+    ax.plot(*pos_t.T, "b--", alpha=1)
+    # ax.plot(*pos_t_ESKF.T, "g--", alpha=1)
 
-# ax.plot(*pos_t_w.T, "r--", alpha=1)
-# ax.plot(*pos_t_ESKF_w.T, "g--", alpha=1)
+    # ax.plot(*pos_t_w.T, "r--", alpha=1)
+    ax.plot(*pos_t_ESKF_w.T, "g--", alpha=1)
 
-# ax.plot(*pos_t_n.T, "r--", alpha=1)
-# ax.plot(*pos_t_ESKF_n.T, "g--", alpha=1)
+    # ax.plot(*pos_t_n.T, "r--", alpha=1)
+    # ax.plot(*pos_t_ESKF_n.T, "g--", alpha=1)
 
-# print("\nMean norm of error between pos and gt pos:", np.linalg.norm(p[:N] - pos, axis=1).mean())
-# print("Frobenius norm of difference of last covariances", np.linalg.norm(T_pred[-1].cov - T_pred_ESKF[-1].cov, ord="fro"))
+    # print("\nMean norm of error between pos and gt pos:", np.linalg.norm(p[:N] - pos, axis=1).mean())
+    # print("Frobenius norm of difference of last covariances", np.linalg.norm(T_pred[-1].cov - T_pred_ESKF[-1].cov, ord="fro"))
 
 
-for i in range(0, N, 400):
-    target_state[i].draw_significant_ellipses(ax, color="orange")
-    # target_world_state[i].draw_significant_ellipses(ax, color="red")
+    for i in range(0, N, 400):
+        target_state[i].draw_significant_ellipses(ax, color="blue")
+        target_world_state[i].draw_significant_ellipses(ax, color="red")
 
-    # target_state_ESKF[i].draw_significant_ellipses(ax, color="green")
-    # target_world_state_ESKF[i].draw_significant_ellipses(ax, color="blue")
+        # target_state_ESKF[i].draw_significant_ellipses(ax, color="green")
+        # target_world_state_ESKF[i].draw_significant_ellipses(ax, color="green")
 
-    # target_naive_state[i].draw_significant_ellipses(ax, color="yellow")
-    # target_naive_state_ESKF[i].draw_significant_ellipses(ax, color="pink")
+        # target_naive_state[i].draw_significant_ellipses(ax, color="yellow")
+        # target_naive_state_ESKF[i].draw_significant_ellipses(ax, color="pink")
 
-for i in range(499, N+500, 500):
-    idx = min(i, N-2)
+    for i in range(499, N+500, 500):
+        idx = min(i, N-2)
 
-    T_pred[idx].draw_significant_ellipses(ax, color="red")
-    plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
-    
-    T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
-    plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
+        T_pred[idx].draw_significant_ellipses(ax, color="red")
+        plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
+        
+        T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
+        plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
 
-    idx = idx + 1
+        idx = idx + 1
 
-    T_pred[idx].draw_significant_ellipses(ax, color="red")
-    plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
+        T_pred[idx].draw_significant_ellipses(ax, color="red")
+        plot_3d_frame(ax, SE3(T_pred[idx].mean.R, T_pred[idx].mean.p), scale=10)
 
-    T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
-    plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
+        T_pred_ESKF[idx].draw_significant_ellipses(ax, color="green")
+        plot_3d_frame(ax, SE3(T_pred_ESKF[idx].mean.R, T_pred_ESKF[idx].mean.p), scale=10)
 
-    
-plot_3d_frame(ax, SE3(SO3(rot[N]), p[N]), scale=5)
-plot_3d_frame(ax, SE3(SO3(rot[0]), p[0]), scale=5)
-plot_3d_frame(ax, SE3(init_state.rot, init_state.pos), scale=5)
+        
+    plot_3d_frame(ax, SE3(SO3(rot[N]), p[N]), scale=5)
+    plot_3d_frame(ax, SE3(SO3(rot[0]), p[0]), scale=5)
+    plot_3d_frame(ax, SE3(init_state.rot, init_state.pos), scale=5)
 
-#plot gt
-ax.plot(*p[:N].T, "k--")
-ax.plot(*p[N].T, "ko")
-ax.plot(*target_state_gt[:, :3].T, "--", color="orange")
-plt.axis("equal")
-# plt.show()
+    #plot gt
+    ax.plot(*p[:N].T, "k--")
+    ax.plot(*p[N].T, "ko")
+    ax.plot(*target_state_gt[:, :3].T, "--", color="orange")
+    plt.axis("equal")
+
 
 
 
@@ -478,39 +490,40 @@ CI_ANEES = chi2.interval(1 - alpha, 3 * N, scale=1/N)
 print(f"\nCI NEES: {CI_NEES}")
 print(f"CI ANEES: {CI_ANEES}")
 
-fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
-ax.set_yscale("log")
-ax.plot(NEES_pos, lw=0.5, label="SE_2(3) + body")
-ax.plot(NEES_world_pos, lw=0.5, label="SE_2(3) + world")
-ax.plot(NEES_ESKF_pos, lw=0.5, label="ESKF + body")
-ax.plot(NEES_world_ESKF_pos, lw=0.5, label="ESKF + world")
-ax.plot(NEES_naive_pos, lw=0.5, label="Naive SE_2(3) + world")
-ax.plot(NEES_naive_ESKF_pos, lw=0.5, label="Naive ESKF + world")
-ax.plot(NEES_body_naive_pos, lw=0.5, label="Naive SE_2(3) + body")
-ax.plot(NEES_body_naive_ESKF_pos, lw=0.5, label="Naive ESKF + body")
-ax.plot(np.full(N, CI_NEES[0]), "r--")
-ax.plot(np.full(N, CI_NEES[1]), "r--")
-ax.plot(np.full(N, CI_ANEES[0]), "g--")
-ax.plot(np.full(N, CI_ANEES[1]), "g--")
-ax.set_title(f"NEES position all filters")
-ax.legend()
+if savepath is None:
+    fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
+    ax.set_yscale("log")
+    ax.plot(NEES_pos, lw=0.5, label="SE_2(3) + body")
+    ax.plot(NEES_world_pos, lw=0.5, label="SE_2(3) + world")
+    ax.plot(NEES_ESKF_pos, lw=0.5, label="ESKF + body")
+    ax.plot(NEES_world_ESKF_pos, lw=0.5, label="ESKF + world")
+    ax.plot(NEES_body_naive_pos, lw=0.5, label="Naive SE_2(3) + body")
+    ax.plot(NEES_naive_pos, lw=0.5, label="Naive SE_2(3) + world")
+    ax.plot(NEES_body_naive_ESKF_pos, lw=0.5, label="Naive ESKF + body")
+    ax.plot(NEES_naive_ESKF_pos, lw=0.5, label="Naive ESKF + world")
+    ax.plot(np.full(N, CI_NEES[0]), "r--")
+    ax.plot(np.full(N, CI_NEES[1]), "r--")
+    ax.plot(np.full(N, CI_ANEES[0]), "g--")
+    ax.plot(np.full(N, CI_ANEES[1]), "g--")
+    ax.set_title(f"NEES position all filters")
+    ax.legend()
 
-fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
-ax.set_yscale("log")
-ax.plot(NEES_vel, lw=0.5, label="SE_2(3) + body")
-ax.plot(NEES_world_vel, lw=0.5, label="SE_2(3) + world")
-ax.plot(NEES_ESKF_vel, lw=0.5, label="ESKF + body")
-ax.plot(NEES_world_ESKF_vel, lw=0.5, label="ESKF + world")
-ax.plot(NEES_naive_vel, lw=0.5, label="Naive SE_2(3) + world")
-ax.plot(NEES_naive_ESKF_vel, lw=0.5, label="Naive ESKF + world")
-ax.plot(NEES_body_naive_vel, lw=0.5, label="Naive SE_2(3) + body")
-ax.plot(NEES_body_naive_ESKF_vel, lw=0.5, label="Naive ESKF + body")
-ax.plot(np.full(N, CI_NEES[0]), "r--")
-ax.plot(np.full(N, CI_NEES[1]), "r--")
-ax.plot(np.full(N, CI_ANEES[0]), "g--")
-ax.plot(np.full(N, CI_ANEES[1]), "g--")
-ax.set_title(f"NEES velocity all filters")
-ax.legend()
+    fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
+    ax.set_yscale("log")
+    ax.plot(NEES_vel, lw=0.5, label="SE_2(3) + body")
+    ax.plot(NEES_world_vel, lw=0.5, label="SE_2(3) + world")
+    ax.plot(NEES_ESKF_vel, lw=0.5, label="ESKF + body")
+    ax.plot(NEES_world_ESKF_vel, lw=0.5, label="ESKF + world")
+    ax.plot(NEES_body_naive_vel, lw=0.5, label="Naive SE_2(3) + body")
+    ax.plot(NEES_naive_vel, lw=0.5, label="Naive SE_2(3) + world")
+    ax.plot(NEES_body_naive_ESKF_vel, lw=0.5, label="Naive ESKF + body")
+    ax.plot(NEES_naive_ESKF_vel, lw=0.5, label="Naive ESKF + world")
+    ax.plot(np.full(N, CI_NEES[0]), "r--")
+    ax.plot(np.full(N, CI_NEES[1]), "r--")
+    ax.plot(np.full(N, CI_ANEES[0]), "g--")
+    ax.plot(np.full(N, CI_ANEES[1]), "g--")
+    ax.set_title(f"NEES velocity all filters")
+    ax.legend()
 
 
 insideCI = (CI_NEES[0] <= NEES_pos) * (NEES_pos <= CI_NEES[1])
@@ -634,22 +647,24 @@ CI_ANEES = chi2.interval(1 - alpha, 6 * N, scale=1/N)
 print(f"\nCI NEES: {CI_NEES}")
 print(f"CI ANEES: {CI_ANEES}")
 
-fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
-ax.set_yscale("log")
-ax.plot(NEES, lw=0.5, label="SE_2(3) + body")
-ax.plot(NEES_world, lw=0.5, label="SE_2(3) + world")
-ax.plot(NEES_ESKF, lw=0.5, label="ESKF + body")
-ax.plot(NEES_world_ESKF, lw=0.5, label="ESKF + world")
-ax.plot(NEES_naive, lw=0.5, label="Naive SE_2(3) + world")
-ax.plot(NEES_naive_ESKF, lw=0.5, label="Naive ESKF + world")
-ax.plot(NEES_body_naive, lw=0.5, label="Naive SE_2(3) + body")
-ax.plot(NEES_body_naive_ESKF, lw=0.5, label="Naive ESKF + body")
-ax.plot(np.full(N, CI_NEES[0]), "r--")
-ax.plot(np.full(N, CI_NEES[1]), "r--")
-ax.plot(np.full(N, CI_ANEES[0]), "g--")
-ax.plot(np.full(N, CI_ANEES[1]), "g--")
-ax.set_title(f"NEES total all filters")
-ax.legend()
+if savepath is None:
+
+    fig, ax = plt.subplots(1,1)#, figsize=(8, 5), num=4, clear=True, sharey=True)
+    ax.set_yscale("log")
+    ax.plot(NEES, lw=0.5, label="SE_2(3) + body")
+    ax.plot(NEES_world, lw=0.5, label="SE_2(3) + world")
+    ax.plot(NEES_ESKF, lw=0.5, label="ESKF + body")
+    ax.plot(NEES_world_ESKF, lw=0.5, label="ESKF + world")
+    ax.plot(NEES_body_naive, lw=0.5, label="Naive SE_2(3) + body")
+    ax.plot(NEES_naive, lw=0.5, label="Naive SE_2(3) + world")
+    ax.plot(NEES_body_naive_ESKF, lw=0.5, label="Naive ESKF + body")
+    ax.plot(NEES_naive_ESKF, lw=0.5, label="Naive ESKF + world")
+    ax.plot(np.full(N, CI_NEES[0]), "r--")
+    ax.plot(np.full(N, CI_NEES[1]), "r--")
+    ax.plot(np.full(N, CI_ANEES[0]), "g--")
+    ax.plot(np.full(N, CI_ANEES[1]), "g--")
+    ax.set_title(f"NEES total all filters")
+    ax.legend()
 
 
 insideCI = (CI_NEES[0] <= NEES) * (NEES <= CI_NEES[1])
@@ -709,32 +724,91 @@ print(f"Percentage of NEES inside bounds {percents_ESKF}%")
 print(f"ANEES: {ANEES_ESKF}")
 
 
+if savepath is None:
 
-fig, axs = plt.subplots(2, 3)
-axs = axs.flatten()
+    fig, axs = plt.subplots(2, 3)
+    axs = axs.flatten()
 
-for i, ax in enumerate(axs):
-    if i < 3:
-        ax.plot(target_state_gt[:, i], "--", color="orange")
-        ax.plot(pos_t[:, i], color="red")
-        ax.plot(pos_t_ESKF[:, i], color="green")
-        ax.plot(pos_t_w[:, i], color="red")
-        ax.plot(pos_t_ESKF_w[:, i], color="green")
-        ax.plot(pos_t_n[:, i], color="red")
-        ax.plot(pos_t_ESKF_n[:, i], color="green")
-        ax.plot(pos_t_nb[:, i], color="red")
-        ax.plot(pos_t_ESKF_nb[:, i], color="green")
-        ax.set_title(f"position {'xyz'[i]}")
-    elif i < 6:
-        ax.plot(target_state_gt[:, i], "--", color="orange")
-        ax.plot(vel_t[:, i-3], color="red")
-        ax.plot(vel_t_ESKF[:, i-3], color="green")
-        ax.plot(vel_t_w[:, i-3], color="red")
-        ax.plot(vel_t_ESKF_w[:, i-3], color="green")
-        ax.plot(vel_t_n[:, i-3], color="red")
-        ax.plot(vel_t_ESKF_n[:, i-3], color="green")
-        ax.plot(vel_t_nb[:, i-3], color="red")
-        ax.plot(vel_t_ESKF_nb[:, i-3], color="green")
-        ax.set_title(f"velocity {'xyz'[i-3]}")
+    for i, ax in enumerate(axs):
+        if i < 3:
+            ax.plot(target_state_gt[:, i], "--", color="orange")
+            ax.plot(pos_t[:, i], color="red")
+            ax.plot(pos_t_ESKF[:, i], color="green")
+            ax.plot(pos_t_w[:, i], color="red")
+            ax.plot(pos_t_ESKF_w[:, i], color="green")
+            ax.plot(pos_t_n[:, i], color="red")
+            ax.plot(pos_t_ESKF_n[:, i], color="green")
+            ax.plot(pos_t_nb[:, i], color="red")
+            ax.plot(pos_t_ESKF_nb[:, i], color="green")
+            ax.set_title(f"position {'xyz'[i]}")
+        elif i < 6:
+            ax.plot(target_state_gt[:, i], "--", color="orange")
+            ax.plot(vel_t[:, i-3], color="red")
+            ax.plot(vel_t_ESKF[:, i-3], color="green")
+            ax.plot(vel_t_w[:, i-3], color="red")
+            ax.plot(vel_t_ESKF_w[:, i-3], color="green")
+            ax.plot(vel_t_n[:, i-3], color="red")
+            ax.plot(vel_t_ESKF_n[:, i-3], color="green")
+            ax.plot(vel_t_nb[:, i-3], color="red")
+            ax.plot(vel_t_ESKF_nb[:, i-3], color="green")
+            ax.set_title(f"velocity {'xyz'[i-3]}")
 
-plt.show()
+    plt.show()
+
+
+else:
+    NEES_dict = {"se23_body": {"tot": NEES, "vel": NEES_vel, "pos": NEES_pos},
+                 "se23_world": {"tot": NEES_world, "vel": NEES_world_vel, "pos": NEES_world_pos},
+                 "ESKF_body": {"tot": NEES_ESKF, "vel": NEES_ESKF_vel, "pos": NEES_ESKF_pos},
+                 "ESKF_world": {"tot": NEES_world_ESKF, "vel": NEES_world_ESKF_vel, "pos": NEES_world_ESKF_pos},
+                 "naive_se23_body": {"tot": NEES_body_naive, "vel": NEES_body_naive_vel, "pos": NEES_body_naive_pos},
+                 "naive_se23_world": {"tot": NEES_naive, "vel": NEES_naive_vel, "pos": NEES_naive_pos},
+                 "naive_ESKF_body": {"tot": NEES_body_naive_ESKF, "vel": NEES_body_naive_ESKF_vel, "pos": NEES_body_naive_ESKF_pos},
+                 "naive_ESKF_world": {"tot": NEES_naive_ESKF, "vel": NEES_naive_ESKF_vel, "pos": NEES_naive_ESKF_pos}}
+
+    np.save("./analysis/" + savepath, NEES_dict, allow_pickle=True)
+
+
+for skip in (0, 5000):
+    print(skip)
+    N = N-skip
+
+    ep = target_state_gt-np.hstack((pos_t, vel_t))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE se23 body", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_ESKF, vel_t_ESKF))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE ESKF body", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_w, vel_t_w))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE se23 world", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_ESKF_w, vel_t_ESKF_w))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE ESKF world", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_nb, vel_t_nb))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE se23 body naive", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_ESKF_nb, vel_t_ESKF_nb))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE ESKF body naive", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_n, vel_t_n))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE se23 world naive", mean**0.5)
+
+    ep = target_state_gt-np.hstack((pos_t_ESKF_n, vel_t_ESKF_n))
+    ep = ep[skip:]
+    mean = np.einsum("ij, ji ->", ep, ep.T)/N/6
+    print("RMSE ESKF world naive", mean**0.5)

@@ -338,22 +338,22 @@ for i, ax in enumerate(axs):
 
 print("\n")
 ep = p[:N]-pos
-mean = np.einsum("ij, ji ->", ep, ep.T)/N
+mean = np.einsum("ij, ji ->", ep, ep.T)/N/3
 print("RMSE pos", mean**0.5)
 ep = p[:N]-pos_ESKF
-mean = np.einsum("ij, ji ->", ep, ep.T)/N
+mean = np.einsum("ij, ji ->", ep, ep.T)/N/3
 print("RMSE pos ESKF", mean**0.5)
 ev = v[:N]-vel
-mean = np.einsum("ij, ji ->", ev, ev.T)/N
+mean = np.einsum("ij, ji ->", ev, ev.T)/N/3
 print("RMSE vel", mean**0.5)
 ev = v[:N]-vel_ESKF
-mean = np.einsum("ij, ji ->", ev, ev.T)/N
+mean = np.einsum("ij, ji ->", ev, ev.T)/N/3
 print("RMSE vel ESKF", mean**0.5)
 ea = euler_gt - euler
-mean = np.einsum("ij, ji ->", ea, ea.T)/N
+mean = np.einsum("ij, ji ->", ea, ea.T)/N/3
 print("RMSE euler", mean**0.5)
 ea = euler_gt - euler_ESKF
-mean = np.einsum("ij, ji ->", ea, ea.T)/N
+mean = np.einsum("ij, ji ->", ea, ea.T)/N/3
 print("RMSE euler ESKF", mean**0.5)
 
 plt.show()

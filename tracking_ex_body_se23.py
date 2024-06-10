@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from SE23.agent import Agent
-# from SE23.target import TargetBody2 as TargetBody
+from SE23.target import TargetBody2
 from SE23.target import TargetBody
 
 from SE23.lie_theory import SE3_2, SO3, SE2, SO2
@@ -49,7 +49,7 @@ agent = Agent(IMU_cov, GNSS_cov, radar_cov, init_agent_pose)
 
 #spawn target
 init_target_cov = np.diag([3, 3, 0, 5, 5, 0])**2
-init_target_mean = multivariate_normal(np.array([*pt_0, *vt_0]), init_target_cov)
+init_target_mean = multivariate_normal(init_agent_mean.inverse().action2(np.array([*pt_0, *vt_0])), init_target_cov)
 init_target_pose = TargetState(init_target_mean, init_target_cov)
 
 cv_velocity_variance = 2**2
@@ -65,6 +65,8 @@ target_state_gt[0] = np.array([*pt_0, *vt_0])
 
 TARGET_ID = 0
 target = TargetBody(id=TARGET_ID, var_acc=cv_velocity_variance, state=init_target_pose)
+TARGET2_ID = 1
+target2 = TargetBody2(id=TARGET2_ID, var_acc=cv_velocity_variance, state=init_target_pose.copy())
 
 
 #generate IMU measurements
@@ -84,6 +86,7 @@ target_noise = lambda: multivariate_normal([0]*6, Q)
 
 
 agent.add_target(target)
+agent.add_target(target2)
 
 #plotting
 fig = plt.figure()
@@ -91,6 +94,7 @@ ax = fig.add_subplot(111)
 
 plot_as_SE2(ax, agent.state, color="green") #plot initial state
 plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="pink")
+plot_as_SE2(ax, agent.targets[1].convert_state_to_world_manifold(agent.state), color="orange")
 # plot_as_SE2(ax, agent.state@agent.targets[0].state, color="pink")
 
 agent_pos = np.empty((n_steps*n_times + 1, 2))
@@ -104,6 +108,11 @@ for n in tqdm(range(n_times)):
         agent_pos[k + n*n_steps + 1, :] = agent.state.pos[:2]
         target_state_gt[k + n*n_steps + 1, :] = Fcv@target_state_gt[k + n*n_steps, :] + target_noise()
 
+        t1 = agent.targets[0].convert_state_to_world_lin(agent.state)
+        t2 = agent.targets[1].convert_state_to_world_lin(agent.state)
+        print(np.linalg.norm(t1.mean - t2.mean))
+        print(np.linalg.norm(t1.cov -t2.cov, "fro"))
+
     #current time
     t = dt*(n_steps*(n+1))
 
@@ -116,6 +125,7 @@ for n in tqdm(range(n_times)):
     #target measurement
     y = TargetMeasurement(multivariate_normal(Rot(t).T@(target_state_gt[(n+1)*n_steps, :3] - p(t)), radar_cov))
     agent.target_update(TARGET_ID, y)
+    agent.target_update(TARGET2_ID, y)
 
 
     #plotting
@@ -123,6 +133,7 @@ for n in tqdm(range(n_times)):
 
     plot_as_SE2(ax, agent.state, color="green")
     plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="pink")
+    plot_as_SE2(ax, agent.targets[1].convert_state_to_world_manifold(agent.state), color="orange")
 
 
 
@@ -137,6 +148,7 @@ for n in tqdm(range(n_times)):
 
 plot_as_SE2(ax, agent.state, color="green") #plot the last ellipsis
 plot_as_SE2(ax, agent.targets[0].convert_state_to_world_manifold(agent.state), color="pink")
+plot_as_SE2(ax, agent.targets[1].convert_state_to_world_manifold(agent.state), color="orange")
 
 agent_pos[-1, :] = agent.state.pos[:2] #add final position
 ax.plot(agent_pos[:, 0], agent_pos[:, 1], "g--")

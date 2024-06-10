@@ -14,7 +14,7 @@ from SE23.plot_utils import *
 
 #meta vars
 n_times = 10
-n_steps = 100 #this is done n_times times
+n_steps = 120 #this is done n_times times
 #imu rate
 dt = 0.01 #sec per step
 T = (n_times*n_steps-1)*dt
@@ -35,12 +35,12 @@ vt = lambda t: np.array([30, -4*t, 0])
 
 
 #spawn agent
-IMU_cov = np.diag([0, 0, 0.2, 2, 2, 0])**2
+IMU_cov = np.diag([0, 0, 0.2, 0, 0, 0])**2
 
 GNSS_cov = np.diag([5, 5, 0.001])**2
 radar_cov = np.diag([15, 15, 0.001])**2
 
-init_agent_cov = np.diag([0, 0, 0.1, 0, 0, 0, 2, 2, 0])**2
+init_agent_cov = np.diag([0, 0, 0.2, 0, 0, 0, 0, 0, 0])**2
 init_agent_gt = SE3_2(Rot(0), v(0), p(0))
 init_agent_mean = init_agent_gt@SE3_2.Exp(multivariate_normal([0]*9, init_agent_cov))
 init_agent_pose = PlatformState(init_agent_mean, init_agent_cov)
@@ -48,8 +48,8 @@ init_agent_pose = PlatformState(init_agent_mean, init_agent_cov)
 agent = Agent(IMU_cov, GNSS_cov, radar_cov, init_agent_pose)
 
 #spawn target
-init_target_cov = np.diag([3, 3, 0, 5, 5, 0])**2
-init_target_mean = multivariate_normal(np.array([*pt(0), *vt(0)]), init_target_cov)
+init_target_cov = np.diag([0, 0, 0, 0, 0, 0])**2
+init_target_mean = multivariate_normal(init_agent_mean.inverse().action2(np.array([*pt(0), *vt(0)])), init_target_cov)
 init_target_pose = TargetState(init_target_mean, init_target_cov)
 
 cv_velocity_variance = 2**2
